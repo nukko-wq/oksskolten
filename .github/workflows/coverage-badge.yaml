@@ -1,0 +1,65 @@
+name: Coverage Badge
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  update-badges:
+    name: Update Coverage Badges
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-coverage
+          path: artifacts/server
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-coverage
+          path: artifacts/client
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate badge JSON
+        run: |
+          generate_badge() {
+            local name=$1 file=$2
+            local pct=$(jq '.total.lines.pct' "$file")
+            local color="red"
+            if (( $(echo "$pct >= 80" | bc -l) )); then color="brightgreen"
+            elif (( $(echo "$pct >= 60" | bc -l) )); then color="yellow"; fi
+            echo "{\"schemaVersion\":1,\"label\":\"${name} coverage\",\"message\":\"${pct}%\",\"color\":\"${color}\"}"
+          }
+          generate_badge "server" artifacts/server/coverage-summary.json > /tmp/server-coverage.json
+          generate_badge "client" artifacts/client/coverage-summary.json > /tmp/client-coverage.json
+
+      # Private repo: update public Gist (shields.io can access)
+      - name: Update Gist badges
+        env:
+          GH_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          gh gist edit 75622e092006ac0a17da48ef4a173028 -f server-coverage.json /tmp/server-coverage.json
+          gh gist edit 75622e092006ac0a17da48ef4a173028 -f client-coverage.json /tmp/client-coverage.json
+
+      # Public repo: push to badges branch (switch README URLs when OSS)
+      - name: Push badge data to badges branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan badges-tmp
+          git rm -rf .
+          cp /tmp/server-coverage.json /tmp/client-coverage.json .
+          git add server-coverage.json client-coverage.json
+          git commit -m "Update coverage badges"
+          git push -f origin badges-tmp:badges
