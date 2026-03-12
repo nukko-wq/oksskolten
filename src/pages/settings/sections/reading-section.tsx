@@ -13,6 +13,7 @@ export function ReadingSection() {
     showThumbnails, setShowThumbnails,
     showFeedActivity, setShowFeedActivity,
     chatPosition, setChatPosition,
+    articleOpenMode, setArticleOpenMode,
     dateMode, setDateMode,
   } = settings
   const { t, locale } = useI18n()
@@ -254,6 +255,77 @@ export function ReadingSection() {
                         <div className="w-2.5 h-2.5 rounded-sm bg-muted opacity-40" />
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+            </PreviewCard>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <p className="text-sm text-text mb-1">{t('settings.articleOpenMode')}</p>
+        <p className="text-xs text-muted mb-3">{t('settings.articleOpenModeDesc')}</p>
+        <div className="flex gap-3">
+          {([
+            { value: 'page' as const, label: t('settings.articleOpenModePage') },
+            { value: 'overlay' as const, label: t('settings.articleOpenModeOverlay') },
+          ]).map(option => (
+            <PreviewCard
+              key={option.value}
+              selected={articleOpenMode === option.value}
+              onClick={() => setArticleOpenMode(option.value)}
+              label={option.label}
+              sizeClass="w-full md:w-[160px] h-[112px]"
+              className="flex-1 md:flex-none"
+            >
+              {option.value === 'page' ? (
+                <div className="w-full h-full bg-bg-card flex flex-col">
+                  {/* Page transition preview: list → detail */}
+                  <div className="flex-1 flex items-center justify-center gap-2 px-3">
+                    {/* List view */}
+                    <div className="w-10 h-14 rounded border border-border bg-bg-card p-1 space-y-1">
+                      <div className="w-full h-1 rounded-full bg-text/15" />
+                      <div className="w-3/4 h-1 rounded-full bg-text/15" />
+                      <div className="w-full h-1 rounded-full bg-accent/30" />
+                      <div className="w-2/3 h-1 rounded-full bg-text/15" />
+                    </div>
+                    {/* Arrow */}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted/50 shrink-0">
+                      <path d="M5 12h14" />
+                      <path d="m12 5 7 7-7 7" />
+                    </svg>
+                    {/* Detail view */}
+                    <div className="w-10 h-14 rounded border border-border bg-bg-card p-1 space-y-1">
+                      <div className="w-full h-2 rounded-sm bg-text/20" />
+                      <div className="w-full h-0.5 rounded-full bg-text/8" />
+                      <div className="w-full h-0.5 rounded-full bg-text/8" />
+                      <div className="w-3/4 h-0.5 rounded-full bg-text/8" />
+                      <div className="w-full h-0.5 rounded-full bg-text/8" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-full bg-bg-card flex relative overflow-hidden">
+                  {/* Background list (dimmed) */}
+                  <div className="absolute inset-0 p-2 space-y-1.5 opacity-20">
+                    <div className="w-full h-1.5 rounded-full bg-text/15" />
+                    <div className="w-3/4 h-1.5 rounded-full bg-text/15" />
+                    <div className="w-full h-1.5 rounded-full bg-text/15" />
+                    <div className="w-2/3 h-1.5 rounded-full bg-text/15" />
+                    <div className="w-full h-1.5 rounded-full bg-text/15" />
+                  </div>
+                  {/* Right slide-in panel */}
+                  <div className="absolute top-0 bottom-0 right-0 w-3/5 bg-bg-card border-l border-border shadow-lg p-2 space-y-1 z-10">
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <div className="w-2 h-2 rounded-full bg-muted/30" />
+                    </div>
+                    <div className="w-full h-2 rounded-sm bg-text/20" />
+                    <div className="w-2/3 h-1 rounded-full bg-muted/20 mt-0.5" />
+                    <div className="w-full h-0.5 rounded-full bg-text/8 mt-1.5" />
+                    <div className="w-full h-0.5 rounded-full bg-text/8" />
+                    <div className="w-3/4 h-0.5 rounded-full bg-text/8" />
+                    <div className="w-full h-0.5 rounded-full bg-text/8" />
                   </div>
                 </div>
               )}

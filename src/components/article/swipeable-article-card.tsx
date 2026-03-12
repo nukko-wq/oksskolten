@@ -11,6 +11,7 @@ interface SwipeableArticleCardProps extends ArticleDisplayConfig {
   article: ArticleListItem
   layout?: LayoutName
   isFeatured?: boolean
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
 }
 
 const SWIPE_THRESHOLD = 80
@@ -24,6 +25,7 @@ export function SwipeableArticleCard({
   indicatorStyle,
   showUnreadIndicator,
   showThumbnails,
+  onClick: onClickProp,
 }: SwipeableArticleCardProps) {
   const navigate = useNavigate()
   const x = useMotionValue(0)
@@ -49,7 +51,8 @@ export function SwipeableArticleCard({
     e.preventDefault()
     // Only navigate if not dragging
     if (!isDragging.current) {
-      void navigate(articleUrlToPath(article.url))
+      if (onClickProp) { onClickProp(e) }
+      else { void navigate(articleUrlToPath(article.url)) }
     }
   }
 

@@ -13,6 +13,7 @@ import { useAppLayout } from '../../app'
 import { ArticleCard, type ArticleDisplayConfig } from './article-card'
 import { FeedMetricsBar } from '../feed/feed-metrics-bar'
 import { SwipeableArticleCard } from './swipeable-article-card'
+import { ArticleOverlay } from './article-overlay'
 import { PullToRefresh } from '../layout/pull-to-refresh'
 import { useFetchProgressContext } from '../../contexts/fetch-progress-context'
 import { toast } from 'sonner'
@@ -58,7 +59,8 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
   const bookmarkedOnly = isBookmarks
   const likedOnly = isLikes
   const readOnly = isHistory
-  const { autoMarkRead, dateMode, indicatorStyle, layout } = settings
+  const { autoMarkRead, dateMode, indicatorStyle, layout, articleOpenMode } = settings
+  const [overlayUrl, setOverlayUrl] = useState<string | null>(null)
   const displayConfig: ArticleDisplayConfig = {
     dateMode,
     indicatorStyle,
@@ -360,10 +362,16 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
           const effectiveArticle = isAutoRead
             ? { ...article, seen_at: article.seen_at ?? new Date().toISOString() }
             : article
+          const handleOverlayOpen = articleOpenMode === 'overlay' ? (e: React.MouseEvent<HTMLAnchorElement>) => {
+            if (e.metaKey || e.ctrlKey || e.button === 1) return
+            e.preventDefault()
+            setOverlayUrl(article.url)
+          } : undefined
           const cardProps = {
             article: effectiveArticle,
             layout,
             isFeatured: layout === 'magazine' && index === 0,
+            onClick: handleOverlayOpen,
             ...displayConfig,
           }
           return (
@@ -405,6 +413,8 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
           )}
         </div>
       )}
+
+      <ArticleOverlay articleUrl={overlayUrl} onClose={() => setOverlayUrl(null)} />
     </main>
   )
 })
