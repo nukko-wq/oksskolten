@@ -7,6 +7,8 @@ import { themes as builtinThemes } from '../../data/themes'
 import { PreviewCard } from '../../components/settings/preview-card'
 import { useAppLayout } from '../../app'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PixelDreamPuff, PixelSleepyGiant } from '../../components/ui/mascot'
 import type { MascotChoice } from '../../hooks/use-mascot'
 import { parseThemeJson, themeToJson } from '../../lib/theme-json'
@@ -41,10 +43,34 @@ export function AppearanceTab() {
   } = settings
   const { t, locale } = useI18n()
   const [editingTheme, setEditingTheme] = useState<Theme | null>(null)
+  const [themeDialogOpen, setThemeDialogOpen] = useState(false)
+  const [deletingThemeName, setDeletingThemeName] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const currentTheme = themes.find(th => th.name === themeName) ?? themes[0]
   const previewLight = previewColorsFromTheme(currentTheme.colors.light)
   const previewDark = previewColorsFromTheme(currentTheme.colors.dark)
   const preloadLinksRef = useRef<HTMLLinkElement[]>([])
+
+  // File import: parse JSON and open dialog on error, or import directly
+  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      let parsed: unknown
+      try { parsed = JSON.parse(reader.result) } catch { toast.error('Invalid JSON'); return }
+      const existingNames = new Set(customThemes.map(ct => ct.name))
+      const result = parseThemeJson(parsed, existingNames)
+      if ('error' in result) { toast.error(result.error); return }
+      if (customThemes.length >= 20) { toast.error(t('settings.themeLimit')); return }
+      setCustomThemes(prev => [...prev, result.theme])
+      setTheme(result.theme.name)
+      toast.success(t('settings.themeImported'))
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }, [customThemes, setCustomThemes, setTheme, t])
 
   const layoutLabelKeys: Record<LayoutName, Parameters<typeof t>[0]> = {
     list: 'settings.layoutList',
@@ -311,6 +337,7 @@ export function AppearanceTab() {
                     onClick={(e) => {
                       e.stopPropagation()
                       setEditingTheme(theme)
+                      setThemeDialogOpen(true)
                     }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -323,12 +350,7 @@ export function AppearanceTab() {
                     title={t('settings.deleteTheme')}
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (!confirm(t('settings.deleteThemeConfirm'))) return
-                      const deletedName = theme.name
-                      setCustomThemes(prev => prev.filter(ct => ct.name !== deletedName))
-                      if (themeName === deletedName) setTheme('default')
-                      if (editingTheme?.name === deletedName) setEditingTheme(null)
-                      toast.success(t('settings.themeDeleted'))
+                      setDeletingThemeName(theme.name)
                     }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -342,8 +364,50 @@ export function AppearanceTab() {
           })}
         </div>
 
-        {/* Import */}
-        <CustomThemeImport
+        {deletingThemeName && (
+          <ConfirmDialog
+            title={t('settings.deleteTheme')}
+            message={t('settings.deleteThemeConfirm')}
+            danger
+            onConfirm={() => {
+              setCustomThemes(prev => prev.filter(ct => ct.name !== deletingThemeName))
+              if (themeName === deletingThemeName) setTheme('default')
+              if (editingTheme?.name === deletingThemeName) setEditingTheme(null)
+              toast.success(t('settings.themeDeleted'))
+              setDeletingThemeName(null)
+            }}
+            onCancel={() => setDeletingThemeName(null)}
+          />
+        )}
+
+        {/* Import buttons */}
+        <div className="mt-4 flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleFileImport}
+          />
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-text hover:bg-hover transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {t('settings.importFromFile')}
+          </button>
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-text hover:bg-hover transition-colors"
+            onClick={() => { setEditingTheme(null); setThemeDialogOpen(true) }}
+          >
+            {t('settings.importFromText')}
+          </button>
+        </div>
+
+        <ThemeJsonDialog
+          open={themeDialogOpen}
+          onOpenChange={setThemeDialogOpen}
           customThemes={customThemes}
           setCustomThemes={setCustomThemes}
           setTheme={setTheme}
@@ -500,15 +564,17 @@ export function AppearanceTab() {
   )
 }
 
-const MAX_CUSTOM_THEMES = 20
-
-function CustomThemeImport({
+function ThemeJsonDialog({
+  open,
+  onOpenChange,
   customThemes,
   setCustomThemes,
   setTheme,
   editingTheme,
   setEditingTheme,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   customThemes: Theme[]
   setCustomThemes: (updater: (prev: Theme[]) => Theme[]) => void
   setTheme: (name: string) => void
@@ -518,145 +584,86 @@ function CustomThemeImport({
   const { t } = useI18n()
   const [jsonText, setJsonText] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [showTextArea, setShowTextArea] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const isEditing = editingTheme !== null
 
-  // When editingTheme changes, populate the text area
+  // Populate text area when editing or reset when opening for import
   useEffect(() => {
-    if (editingTheme) {
-      setJsonText(JSON.stringify(themeToJson(editingTheme), null, 2))
-      setShowTextArea(true)
+    if (open) {
+      setJsonText(editingTheme ? JSON.stringify(themeToJson(editingTheme), null, 2) : '')
       setError(null)
     }
-  }, [editingTheme])
+  }, [open, editingTheme])
 
-  const doImport = useCallback((raw: string) => {
+  const handleClose = useCallback(() => {
+    onOpenChange(false)
+    setEditingTheme(null)
+  }, [onOpenChange, setEditingTheme])
+
+  const doSave = useCallback(() => {
     setError(null)
-    if (!isEditing && customThemes.length >= MAX_CUSTOM_THEMES) {
+    if (!isEditing && customThemes.length >= 20) {
       setError(t('settings.themeLimit'))
       return
     }
     let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      setError('Invalid JSON')
-      return
-    }
-    // When editing, allow the same name as the theme being edited
+    try { parsed = JSON.parse(jsonText) } catch { setError('Invalid JSON'); return }
     const existingNames = new Set(
       customThemes
         .filter(ct => !isEditing || ct.name !== editingTheme?.name)
         .map(ct => ct.name),
     )
     const result = parseThemeJson(parsed, existingNames)
-    if ('error' in result) {
-      setError(result.error)
-      return
-    }
+    if ('error' in result) { setError(result.error); return }
     if (isEditing) {
-      // Replace the existing theme
-      setCustomThemes(prev =>
-        prev.map(ct => ct.name === editingTheme?.name ? result.theme : ct),
-      )
+      setCustomThemes(prev => prev.map(ct => ct.name === editingTheme?.name ? result.theme : ct))
       toast.success(t('settings.themeUpdated'))
     } else {
       setCustomThemes(prev => [...prev, result.theme])
       toast.success(t('settings.themeImported'))
     }
     setTheme(result.theme.name)
-    setJsonText('')
-    setShowTextArea(false)
-    setEditingTheme(null)
-  }, [customThemes, setCustomThemes, setTheme, isEditing, editingTheme, setEditingTheme, t])
-
-  const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') doImport(reader.result)
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }, [doImport])
-
-  const cancelEdit = useCallback(() => {
-    setEditingTheme(null)
-    setJsonText('')
-    setShowTextArea(false)
-    setError(null)
-  }, [setEditingTheme])
+    handleClose()
+  }, [jsonText, customThemes, setCustomThemes, setTheme, isEditing, editingTheme, handleClose, t])
 
   return (
-    <div className="mt-4 space-y-2">
-      {!isEditing && (
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleFile}
-          />
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v) }}>
+      <DialogContent className="max-w-lg" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>
+            {isEditing
+              ? `${t('settings.editTheme')}: ${editingTheme.label}`
+              : t('settings.importTheme')
+            }
+          </DialogTitle>
+        </DialogHeader>
+
+        <textarea
+          className="w-full h-64 rounded-md border border-border bg-bg-input text-text text-xs font-mono p-3 resize-y focus:outline-none focus:ring-1 focus:ring-accent"
+          placeholder='{ "name": "my-theme", "label": "My Theme", "colors": { ... } }'
+          value={jsonText}
+          onChange={e => { setJsonText(e.target.value); setError(null) }}
+        />
+
+        {error && <p className="text-xs text-error">{error}</p>}
+
+        <DialogFooter>
           <button
             type="button"
-            className="text-xs px-3 py-1.5 rounded-md border border-border text-text hover:bg-hover transition-colors"
-            onClick={() => fileInputRef.current?.click()}
+            className="text-xs px-4 py-2 rounded-md border border-border text-muted hover:text-text hover:bg-hover transition-colors"
+            onClick={handleClose}
           >
-            {t('settings.importFromFile')}
+            {t('settings.cancel')}
           </button>
           <button
             type="button"
-            className="text-xs px-3 py-1.5 rounded-md border border-border text-text hover:bg-hover transition-colors"
-            onClick={() => setShowTextArea(v => !v)}
+            className="text-xs px-4 py-2 rounded-md bg-accent text-accent-text hover:opacity-90 transition-opacity disabled:opacity-50"
+            disabled={!jsonText.trim()}
+            onClick={doSave}
           >
-            {t('settings.importFromText')}
+            {isEditing ? t('settings.updateButton') : t('settings.importButton')}
           </button>
-        </div>
-      )}
-
-      {isEditing && (
-        <p className="text-xs text-muted">
-          {t('settings.editTheme')}: <span className="font-medium text-text">{editingTheme.label}</span>
-        </p>
-      )}
-
-      {showTextArea && (
-        <div className="space-y-2">
-          <textarea
-            className="w-full h-48 rounded-md border border-border bg-bg-input text-text text-xs font-mono p-2 resize-y focus:outline-none focus:ring-1 focus:ring-accent"
-            placeholder='{ "name": "my-theme", "label": "My Theme", "colors": { ... } }'
-            value={jsonText}
-            onChange={e => { setJsonText(e.target.value); setError(null) }}
-          />
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-text hover:opacity-90 transition-opacity disabled:opacity-50"
-              disabled={!jsonText.trim()}
-              onClick={() => doImport(jsonText)}
-            >
-              {isEditing ? t('settings.updateButton') : t('settings.importButton')}
-            </button>
-            {isEditing && (
-              <button
-                type="button"
-                className="text-xs px-3 py-1.5 rounded-md border border-border text-muted hover:text-text hover:bg-hover transition-colors"
-                onClick={cancelEdit}
-              >
-                {t('settings.cancel')}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <p className="text-xs text-error">{error}</p>
-      )}
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
