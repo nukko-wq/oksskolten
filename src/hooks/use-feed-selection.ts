@@ -57,11 +57,23 @@ export function useFeedSelection({ orderedFeedIds }: UseFeedSelectionOpts) {
     [selectedFeedIds],
   )
 
+  /** Position within a contiguous selection group (for border rendering) */
+  const selectionGroupPos = useCallback(
+    (feedId: number) => {
+      const idx = orderedFeedIds.indexOf(feedId)
+      const prevSelected = idx > 0 && selectedFeedIds.has(orderedFeedIds[idx - 1])
+      const nextSelected = idx < orderedFeedIds.length - 1 && selectedFeedIds.has(orderedFeedIds[idx + 1])
+      return { isFirst: !prevSelected, isLast: !nextSelected }
+    },
+    [orderedFeedIds, selectedFeedIds],
+  )
+
   return {
     selectedFeedIds,
     selectedCount: selectedFeedIds.size,
     toggleSelect,
     clearSelection,
     isSelected,
+    selectionGroupPos,
   }
 }

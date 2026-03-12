@@ -6,9 +6,10 @@ import type { KeyedMutator } from 'swr'
 interface UseFeedDragDropOpts {
   feeds: FeedWithCounts[]
   mutateFeeds: KeyedMutator<{ feeds: FeedWithCounts[]; bookmark_count: number; like_count: number; clip_feed_id: number | null }>
+  onDropComplete?: () => void
 }
 
-export function useFeedDragDrop({ feeds, mutateFeeds }: UseFeedDragDropOpts) {
+export function useFeedDragDrop({ feeds, mutateFeeds, onDropComplete }: UseFeedDragDropOpts) {
   const [dragOverTarget, setDragOverTarget] = useState<number | 'uncategorized' | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [draggingCount, setDraggingCount] = useState(0)
@@ -95,6 +96,8 @@ export function useFeedDragDrop({ feeds, mutateFeeds }: UseFeedDragDropOpts) {
     } catch {
       void mutateFeeds()
     }
+
+    onDropComplete?.()
   }
 
   function handleDragEnd() {

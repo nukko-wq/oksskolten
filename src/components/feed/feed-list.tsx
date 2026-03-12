@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import useSWR from 'swr'
-import { fetcher, apiPost, apiDelete } from '../../lib/fetcher'
+import { fetcher } from '../../lib/fetcher'
 import { useI18n } from '../../lib/i18n'
 import { MD_BREAKPOINT } from '../../lib/breakpoints'
 import { Inbox, Plus, ChevronRight, Bookmark, ThumbsUp, Clock, Paperclip, Search, Command, AlertTriangle, MessagesSquare } from 'lucide-react'
@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { useFeedActions } from '../../hooks/use-feed-actions'
 import { useFeedDragDrop } from '../../hooks/use-feed-drag-drop'
 import { useFeedSelection } from '../../hooks/use-feed-selection'
+import { useFeedBulkActions } from '../../hooks/use-feed-bulk-actions'
 import { useClipFeedId } from '../../hooks/use-clip-feed-id'
 import { FeedModal } from './feed-modal'
 import { ConfirmDialog } from '../ui/confirm-dialog'
@@ -148,15 +149,8 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
     toggleSelect,
     clearSelection,
     isSelected: isMultiSelected,
+    selectionGroupPos,
   } = useFeedSelection({ orderedFeedIds })
-
-  // For contiguous selection group border: determine if prev/next in render order is also selected
-  function selectionGroupPos(feedId: number) {
-    const idx = orderedFeedIds.indexOf(feedId)
-    const prevSelected = idx > 0 && multiSelectedIds.has(orderedFeedIds[idx - 1])
-    const nextSelected = idx < orderedFeedIds.length - 1 && multiSelectedIds.has(orderedFeedIds[idx + 1])
-    return { isFirst: !prevSelected, isLast: !nextSelected }
-  }
 
   // Escape key clears multi-selection
   useEffect(() => {
@@ -168,6 +162,13 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [multiSelectedCount, clearSelection])
+
+  function handleFetchComplete(result: { totalNew: number; error?: boolean | undefined; name?: string }) {
+    const name = result.name ?? ''
+    if (result.error) toast.error(t('toast.fetchError', { name }))
+    else if (result.totalNew > 0) toast.success(t('toast.fetchedArticles', { count: String(result.totalNew), name }))
+    else toast(t('toast.noNewArticles', { name }))
+  }
 
   const {
     renaming, setRenaming,
@@ -182,14 +183,8 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
     handleConfirm, handleRenameSubmit, handleToggleCollapse,
   } = useFeedActions({
     categorized, mutateFeeds, mutateCategories, startFeedFetch, onMarkAllRead,
-    onFetchComplete: (result) => {
-      const name = result.name ?? ''
-      if (result.error) toast.error(t('toast.fetchError', { name }))
-      else if (result.totalNew > 0) toast.success(t('toast.fetchedArticles', { count: String(result.totalNew), name }))
-      else toast(t('toast.noNewArticles', { name }))
-    },
+    onFetchComplete: handleFetchComplete,
     onDeleted: () => {
-      // Navigate away from deleted feed/category page
       if (feedId || categoryId) void navigate('/inbox')
     },
   })
@@ -197,80 +192,24 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
   const {
     dragOverTarget, isDragging,
     handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd,
-  } = useFeedDragDrop({ feeds, mutateFeeds })
+  } = useFeedDragDrop({ feeds, mutateFeeds, onDropComplete: clearSelection })
 
-  // Clear selection after a successful drop
-  const origHandleDrop = handleDrop
-  const handleDropWithClear = async (e: React.DragEvent, categoryId: number | null) => {
-    await origHandleDrop(e, categoryId)
-    clearSelection()
-  }
-
-  // --- Bulk actions for multi-select ---
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
-
-  const getSelectedFeeds = useCallback(
-    () => feeds.filter(f => multiSelectedIds.has(f.id) && f.type !== 'clip'),
-    [feeds, multiSelectedIds],
-  )
-
-  const handleBulkMoveToCategory = useCallback(async (categoryId: number | null) => {
-    const selected = getSelectedFeeds()
-    const toMove = selected.filter(f => f.category_id !== categoryId)
-    if (toMove.length === 0) return
-    const ids = toMove.map(f => f.id)
-    void mutateFeeds(
-      prev => prev ? { ...prev, feeds: prev.feeds.map(f => ids.includes(f.id) ? { ...f, category_id: categoryId } : f) } : prev,
-      { revalidate: false },
-    )
-    clearSelection()
-    try {
-      await apiPost('/api/feeds/bulk-move', { feed_ids: ids, category_id: categoryId })
-    } catch {
-      void mutateFeeds()
-    }
-  }, [getSelectedFeeds, mutateFeeds, clearSelection])
-
-  const handleBulkMarkAllRead = useCallback(async () => {
-    const selected = getSelectedFeeds()
-    clearSelection()
-    await Promise.all(selected.map(f => apiPost(`/api/feeds/${f.id}/mark-all-seen`)))
-    void mutateFeeds()
-    onMarkAllRead?.()
-  }, [getSelectedFeeds, mutateFeeds, clearSelection, onMarkAllRead])
-
-  const handleBulkFetch = useCallback(async () => {
-    const selected = getSelectedFeeds().filter(f => !f.disabled)
-    clearSelection()
-    for (const feed of selected) {
-      const result = await startFeedFetch(feed.id)
-      const name = feed.name
-      if (result.error) toast.error(t('toast.fetchError', { name }))
-      else if (result.totalNew > 0) toast.success(t('toast.fetchedArticles', { count: String(result.totalNew), name }))
-    }
-  }, [getSelectedFeeds, clearSelection, startFeedFetch, t])
-
-  const handleBulkDelete = useCallback(() => {
-    setBulkDeleteConfirm(true)
-  }, [])
-
-  const handleBulkDeleteConfirm = useCallback(async () => {
-    const selected = getSelectedFeeds()
-    const ids = selected.map(f => f.id)
-    void mutateFeeds(
-      prev => prev ? { ...prev, feeds: prev.feeds.filter(f => !ids.includes(f.id)) } : prev,
-      { revalidate: false },
-    )
-    setBulkDeleteConfirm(false)
-    clearSelection()
-    try {
-      await Promise.all(ids.map(id => apiDelete(`/api/feeds/${id}`)))
-    } catch {
-      // partial failure
-    }
-    void mutateFeeds()
-    if (feedId && ids.includes(Number(feedId))) void navigate('/inbox')
-  }, [getSelectedFeeds, mutateFeeds, clearSelection, feedId, navigate])
+  const {
+    bulkDeleteConfirm, setBulkDeleteConfirm,
+    handleBulkMoveToCategory, handleBulkMarkAllRead,
+    handleBulkFetch, handleBulkDelete, handleBulkDeleteConfirm,
+  } = useFeedBulkActions({
+    feeds,
+    selectedFeedIds: multiSelectedIds,
+    mutateFeeds,
+    clearSelection,
+    startFeedFetch,
+    onMarkAllRead,
+    onFetchComplete: handleFetchComplete,
+    onDeleted: (ids) => {
+      if (feedId && ids.includes(Number(feedId))) void navigate('/inbox')
+    },
+  })
 
   const { settings } = useAppLayout()
   const showFeedActivity = settings.showFeedActivity
@@ -464,7 +403,7 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
         key={category.id}
         onDragOver={e => handleDragOver(e, category.id)}
         onDragLeave={handleDragLeave}
-        onDrop={e => handleDropWithClear(e, category.id)}
+        onDrop={e => handleDrop(e, category.id)}
         className={`rounded-lg transition-colors ${dragOverTarget === category.id ? 'bg-hover-sidebar' : ''}`}
       >
         <CategoryContextMenu
@@ -575,7 +514,7 @@ export function FeedList({ isOpen, onClose, onBackdropClose, onCollapse, onMarkA
           <div
             onDragOver={e => handleDragOver(e, 'uncategorized')}
             onDragLeave={handleDragLeave}
-            onDrop={e => handleDropWithClear(e, null)}
+            onDrop={e => handleDrop(e, null)}
             className={`rounded-lg transition-colors ${dragOverTarget === 'uncategorized' ? 'bg-hover-sidebar' : ''}`}
           >
             {feedsData && uncategorized.length > 0
