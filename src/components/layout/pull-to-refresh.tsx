@@ -13,9 +13,28 @@ export function PullToRefresh({ onRefresh }: PullToRefreshProps) {
   const [refreshing, setRefreshing] = useState(false)
   const startY = useRef(0)
   const pulling = useRef(false)
+  const currentDistance = useRef(0)
+  const rafId = useRef(0)
+  const indicatorRef = useRef<HTMLDivElement>(null)
+
+  const applyTransform = useCallback((distance: number) => {
+    const el = indicatorRef.current
+    if (!el) return
+    if (distance === 0) {
+      el.style.height = '0px'
+      el.style.display = 'none'
+      return
+    }
+    el.style.display = 'flex'
+    el.style.height = `${distance}px`
+    const progress = Math.min(distance / PULL_THRESHOLD, 1)
+    const arrow = el.firstElementChild as HTMLElement | null
+    if (arrow) {
+      arrow.style.transform = `rotate(${progress * 180}deg)`
+    }
+  }, [])
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
-    // Only enable if scrolled to top
     if (window.scrollY > 0) return
     startY.current = e.touches[0].clientY
     pulling.current = true
@@ -25,31 +44,41 @@ export function PullToRefresh({ onRefresh }: PullToRefreshProps) {
     if (!pulling.current || refreshing) return
     const dy = e.touches[0].clientY - startY.current
     if (dy < 0) {
-      setPullDistance(0)
+      currentDistance.current = 0
+      cancelAnimationFrame(rafId.current)
+      rafId.current = requestAnimationFrame(() => applyTransform(0))
       return
     }
-    // Dampen the pull distance
     const dampened = Math.min(dy * 0.5, MAX_PULL)
-    setPullDistance(dampened)
-  }, [refreshing])
+    currentDistance.current = dampened
+    cancelAnimationFrame(rafId.current)
+    rafId.current = requestAnimationFrame(() => applyTransform(dampened))
+  }, [refreshing, applyTransform])
 
   const handleTouchEnd = useCallback(async () => {
     if (!pulling.current) return
     pulling.current = false
+    cancelAnimationFrame(rafId.current)
 
-    if (pullDistance >= PULL_THRESHOLD && !refreshing) {
+    const distance = currentDistance.current
+    if (distance >= PULL_THRESHOLD && !refreshing) {
+      const keepDistance = PULL_THRESHOLD * 0.5
+      currentDistance.current = keepDistance
       setRefreshing(true)
-      setPullDistance(PULL_THRESHOLD * 0.5) // Keep a small indicator visible
+      setPullDistance(keepDistance)
       try {
         await onRefresh()
       } finally {
         setRefreshing(false)
         setPullDistance(0)
+        currentDistance.current = 0
+        applyTransform(0)
       }
     } else {
-      setPullDistance(0)
+      currentDistance.current = 0
+      applyTransform(0)
     }
-  }, [pullDistance, refreshing, onRefresh])
+  }, [refreshing, onRefresh, applyTransform])
 
   useEffect(() => {
     document.addEventListener('touchstart', handleTouchStart, { passive: true })
@@ -59,23 +88,17 @@ export function PullToRefresh({ onRefresh }: PullToRefreshProps) {
       document.removeEventListener('touchstart', handleTouchStart)
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
+      cancelAnimationFrame(rafId.current)
     }
   }, [handleTouchStart, handleTouchMove, handleTouchEnd])
 
-  if (pullDistance === 0 && !refreshing) return null
-
-  const progress = Math.min(pullDistance / PULL_THRESHOLD, 1)
-  const rotation = progress * 180
-
   return (
     <div
-      className="flex items-center justify-center overflow-hidden select-none"
-      style={{ height: pullDistance }}
+      ref={indicatorRef}
+      className="items-center justify-center overflow-hidden select-none"
+      style={{ height: pullDistance, display: pullDistance === 0 && !refreshing ? 'none' : 'flex' }}
     >
-      <div
-        className="transition-transform"
-        style={{ transform: `rotate(${rotation}deg)` }}
-      >
+      <div style={{ transition: 'transform 0.1s' }}>
         {refreshing ? (
           <div className="w-5 h-5 border-2 border-muted border-t-accent rounded-full animate-spin" />
         ) : (

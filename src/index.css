@@ -123,6 +123,17 @@ body {
   font-family: var(--font-article);
 }
 
+/* Disable hover transitions on touch devices to reduce GPU/layout overhead */
+@media (hover: none) {
+  .article-card {
+    transition: none !important;
+  }
+  .article-card:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+}
+
 /* Article prose styles */
 .prose h2 {
   font-size: 22px;
