@@ -46,11 +46,25 @@ POST /api/articles/from-url
     │
     ├─ 1. getClipFeed() → なければ 500
     ├─ 2. getArticleByUrl() → 既存なら 409
-    ├─ 3. fetchFullText(url) → 本文・OGP画像・excerpt・タイトルを取得
+    ├─ 3. fetchArticleContent(url) → 共通フェッチパイプライン（下記参照）
     │     失敗時: last_error に記録し full_text = NULL で続行（graceful degradation）
-    ├─ 4. detectLanguage(fullText) → 'ja' / 'en'
-    ├─ 5. タイトル決定: request.title > fetchedTitle > hostname
-    └─ 6. insertArticle() → 201
+    ├─ 4. タイトル決定: request.title > fetchedTitle > hostname
+    └─ 5. insertArticle() → 201
 ```
 
 保存後の記事は通常のRSS記事と同様に、要約・翻訳・ブックマーク・いいね・チャットが利用可能。
+
+### RSSフィードとの共通フェッチパイプライン
+
+クリップとRSSフィードは同じ `fetchArticleContent()` 関数（`server/fetcher.ts`）を使用する。フルテキスト取得・FlareSolverr フォールバック・bot block 検出・言語判定を統一パイプラインで処理する。差異は渡すオプションにある:
+
+| 機能 | RSSフィード | クリップ |
+|---|---|---|
+| `fetchFullText` + FlareSolverr 自動フォールバック（短い/ゴミ抽出時） | ✅ | ✅ |
+| `isBotBlockPage` 検出 | ✅ | ✅ |
+| `detectLanguage`（ローカルCJK比率判定） | ✅ | ✅ |
+| `requiresJsChallenge`（フィードレベルの明示FlareSolverr指定） | ✅（`feeds.requires_js_challenge` から） | ❌（`undefined` — 自動フォールバックのみ） |
+| `listingExcerpt`（CSS Bridge excerpt フォールバック） | ✅（RSS item の excerpt から） | ❌（該当なし） |
+| `existingArticle`（リトライ時のフェッチスキップ） | ✅（リトライ記事で使用） | ❌（該当なし） |
+
+後半2つのオプションはクリップの性質上そもそも該当しない: CSS Bridge のリスティングページは存在せず、手動保存した記事にはリトライ機構がない。`requiresJsChallenge` はフィード単位の設定でありクリップには存在しないが、`fetchFullText()` 内の自動 FlareSolverr フォールバック（抽出結果が短い/ゴミの場合に発動）は引き続き有効。

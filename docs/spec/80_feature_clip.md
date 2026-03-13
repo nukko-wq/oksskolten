@@ -46,11 +46,25 @@ POST /api/articles/from-url
     │
     ├─ 1. getClipFeed() → 500 if not found
     ├─ 2. getArticleByUrl() → 409 if already exists
-    ├─ 3. fetchFullText(url) → Retrieve body, OGP image, excerpt, and title
+    ├─ 3. fetchArticleContent(url) → Shared fetch pipeline (see below)
     │     On failure: record in last_error and continue with full_text = NULL (graceful degradation)
-    ├─ 4. detectLanguage(fullText) → 'ja' / 'en'
-    ├─ 5. Title resolution: request.title > fetchedTitle > hostname
-    └─ 6. insertArticle() → 201
+    ├─ 4. Title resolution: request.title > fetchedTitle > hostname
+    └─ 5. insertArticle() → 201
 ```
 
 After saving, the article supports summary, translation, bookmark, like, and chat — just like regular RSS articles.
+
+### Shared Fetch Pipeline with RSS Feeds
+
+Clip and RSS feeds use the same `fetchArticleContent()` function (`server/fetcher.ts`), which handles full-text retrieval, FlareSolverr fallback, bot-block detection, and language detection in a unified pipeline. The difference lies in the options passed:
+
+| Capability | RSS Feed | Clip |
+|---|---|---|
+| `fetchFullText` + automatic FlareSolverr fallback (short/garbage extraction) | Yes | Yes |
+| `isBotBlockPage` detection | Yes | Yes |
+| `detectLanguage` (local CJK ratio) | Yes | Yes |
+| `requiresJsChallenge` (explicit FlareSolverr via feed-level flag) | Yes (from `feeds.requires_js_challenge`) | No (`undefined` — automatic fallback only) |
+| `listingExcerpt` (CSS Bridge excerpt fallback) | Yes (from RSS item excerpt) | No (not applicable) |
+| `existingArticle` (skip fetch on retry) | Yes (for retry articles) | No (not applicable) |
+
+The last two options are inherently not applicable to clips: there is no CSS Bridge listing page and no retry mechanism for manually saved articles. The `requiresJsChallenge` flag is a per-feed setting that does not exist for clips; however, the automatic FlareSolverr fallback in `fetchFullText()` (triggered when extracted content is too short or looks like garbage) still applies.

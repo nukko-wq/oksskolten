@@ -110,6 +110,10 @@ flowchart TD
 
 **注意**: 要約（Haiku）と翻訳（Sonnet）はCronでは実行しない。ユーザーが記事を開いたときにオンデマンドで呼び出される（`POST /api/articles/:id/summarize`, `POST /api/articles/:id/translate`）。
 
+### 共通記事フェッチ関数（`fetchArticleContent`）
+
+フェッチ＋フォールバック＋言語判定ロジックは `server/fetcher.ts` の `fetchArticleContent()` 関数に集約されている。Cron パイプライン（`processArticle`）とクリップ保存エンドポイント（`POST /api/articles/from-url`）の両方がこの関数を呼び出し、フルテキスト取得・FlareSolverr フォールバック・bot block 検出・言語判定の挙動を統一している。RSS とクリップで渡すオプションの差異については[クリップ仕様](./80_feature_clip.ja.md#rssフィードとの共通フェッチパイプライン)を参照。
+
 ### フルテキスト取得・マークダウン変換パイプライン
 
 記事URLからMarkdownテキストを生成するまでの全体フロー。HTMLクリーニング（defuddleベース）と Readability を組み合わせた多段パイプラインで、広告・ナビ・トラッキング属性等のノイズを除去した上でMarkdown変換する。外部APIへの依存はなくローカルで完結する。
