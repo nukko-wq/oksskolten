@@ -204,7 +204,7 @@ export function ChatPanel({ variant, chatState: externalChatState, articleId, co
         <div className="absolute inset-0 flex items-center justify-center p-4 md:p-8 pointer-events-none">
           <div className="bg-bg-card rounded-xl border border-border w-full max-w-3xl h-full max-h-[90vh] flex flex-col animate-[fade-in_150ms_ease] pointer-events-auto">
             {/* header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-border select-none">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border select-none" style={{ paddingTop: 'var(--safe-area-inset-top)' }}>
               <span className="text-sm font-medium text-text">{t('chat.title')}</span>
               <IconButton
                 onClick={() => setExpanded(false)}

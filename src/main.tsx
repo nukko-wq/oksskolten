@@ -1,15 +1,22 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
+import { toast } from 'sonner'
 import App from './app'
 import './index.css'
 import { flushOfflineQueue } from './lib/offlineQueue'
+import { translate } from './lib/i18n'
 
-registerSW({
+const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // New service worker is available — reload to avoid serving stale assets
-    window.location.reload()
+    toast(translate('toast.newVersion'), {
+      duration: Infinity,
+      action: {
+        label: translate('toast.reload'),
+        onClick: () => updateSW(true),
+      },
+    })
   },
 })
 

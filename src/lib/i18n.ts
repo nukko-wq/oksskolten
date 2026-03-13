@@ -698,6 +698,8 @@ const dict = {
   'toast.fetchedArticles': { ja: '${name}: ${count}件の新しい記事を取得', en: '${name}: Fetched ${count} new articles' },
   'toast.noNewArticles': { ja: '${name}: 新着なし', en: '${name}: No new articles' },
   'toast.fetchError': { ja: '${name}: フェッチに失敗しました', en: '${name}: Fetch failed' },
+  'toast.newVersion': { ja: '新しいバージョンが利用可能です', en: 'A new version is available' },
+  'toast.reload': { ja: '更新', en: 'Reload' },
 } as const
 
 type MessageKey = keyof typeof dict
@@ -718,6 +720,17 @@ interface LocaleContextValue {
 }
 
 const defaultLocale: Locale = navigator.language.startsWith('ja') ? 'ja' : 'en'
+
+function resolveLocale(): Locale {
+  const stored = localStorage.getItem('locale')
+  if (stored === 'ja' || stored === 'en') return stored
+  return defaultLocale
+}
+
+/** Translate outside React tree (resolves locale from localStorage) */
+export function translate(key: MessageKey): string {
+  return dict[key][resolveLocale()]
+}
 
 export const LocaleContext = createContext<LocaleContextValue>({
   locale: defaultLocale,

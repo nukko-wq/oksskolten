@@ -19,7 +19,7 @@ export function ArticleOverlay({ articleUrl, onClose }: ArticleOverlayProps) {
         >
           <DialogTitle className="sr-only">Article</DialogTitle>
           {/* Close button */}
-          <div className="sticky top-0 z-10 flex items-center h-12 px-4 bg-bg/80 backdrop-blur-sm border-b border-border">
+          <div className="sticky top-0 z-10 flex items-center h-12 px-4 bg-bg/80 backdrop-blur-sm border-b border-border" style={{ paddingTop: 'var(--safe-area-inset-top)' }}>
             <button
               onClick={onClose}
               className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-hover transition-colors"
