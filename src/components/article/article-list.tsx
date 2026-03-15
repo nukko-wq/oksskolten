@@ -28,6 +28,7 @@ interface ArticlesResponse {
   total: number
   has_more: boolean
   total_without_floor?: number
+  total_all?: number
 }
 
 const PAGE_SIZE = 20
@@ -56,7 +57,9 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
   const feedId = feedIdParam ? Number(feedIdParam) : (isClips && clipFeedId ? clipFeedId : undefined)
   const currentFeed = feedId && feedsData ? feedsData.feeds.find(f => f.id === feedId) : undefined
   const categoryId = categoryIdParam ? Number(categoryIdParam) : undefined
-  const unreadOnly = isInbox || (!!categoryId && settings.categoryUnreadOnly === 'on')
+  const [showReadArticles, setShowReadArticles] = useState(false)
+  const categoryUnreadOnly = !!categoryId && settings.categoryUnreadOnly === 'on'
+  const unreadOnly = isInbox || (categoryUnreadOnly && !showReadArticles)
   const bookmarkedOnly = isBookmarks
   const likedOnly = isLikes
   const readOnly = isHistory
@@ -103,6 +106,8 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
   const articles = useMemo(() => data ? data.flatMap(page => page.articles) : [], [data])
   const hasMore = data ? data[data.length - 1]?.has_more ?? false : false
   const isEmpty = data?.[0]?.articles.length === 0
+  const totalAll = data?.[0]?.total_all
+  const allReadEmpty = isEmpty && categoryUnreadOnly && !showReadArticles && totalAll != null && totalAll > 0
   const hiddenByFloor = data?.[0]?.total_without_floor != null
     ? data[0].total_without_floor - (data[0].total ?? 0)
     : 0
@@ -286,10 +291,11 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
     }
   }, [feedId, categoryId, flushBatch])
 
-  // Reset autoReadIds and noFloor when feed/category changes
+  // Reset autoReadIds, noFloor, and showReadArticles when feed/category changes
   useEffect(() => {
     setAutoReadIds(new Set())
     setNoFloor(false)
+    setShowReadArticles(false)
   }, [feedId, categoryId])
 
   return (
@@ -321,7 +327,19 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
         </div>
       )}
 
-      {isEmpty && !isLoading && currentFeed && feedId && progress.has(feedId) && (
+      {allReadEmpty && !isLoading && (
+        <div className="text-center py-12">
+          <p className="text-muted mb-3">{t('articles.allRead')}</p>
+          <button
+            onClick={() => setShowReadArticles(true)}
+            className="text-accent text-sm hover:underline"
+          >
+            {t('articles.showReadArticles')}
+          </button>
+        </div>
+      )}
+
+      {isEmpty && !allReadEmpty && !isLoading && currentFeed && feedId && progress.has(feedId) && (
         <FeedErrorBanner
           lastError={currentFeed.last_error ?? ''}
           feedId={currentFeed.id}
@@ -329,7 +347,7 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
         />
       )}
 
-      {isEmpty && !isLoading && !(feedId && progress.has(feedId)) && (
+      {isEmpty && !allReadEmpty && !isLoading && !(feedId && progress.has(feedId)) && (
         currentFeed?.last_error ? (
           <FeedErrorBanner
             lastError={currentFeed.last_error}

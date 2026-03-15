@@ -65,6 +65,8 @@ const dict = {
   'articles.loadError': { ja: '読み込みに失敗しました', en: 'Failed to load' },
   'articles.retry': { ja: '再試行', en: 'Retry' },
   'articles.empty': { ja: '記事がありません', en: 'No articles' },
+  'articles.allRead': { ja: 'すべて読みました', en: 'All caught up!' },
+  'articles.showReadArticles': { ja: '既読記事を表示する', en: 'Show read articles' },
 
   // FeedErrorBanner - pipeline stages
   'feedError.stage.discovery': { ja: 'RSS検出', en: 'RSS Discovery' },

@@ -221,7 +221,16 @@ export async function articleRoutes(api: FastifyInstance): Promise<void> {
     const smartFloor = !noFloor && !isClipFeed && !unread && !bookmarked && !liked && !read
     const { articles, total, totalWithoutFloor } = getArticles({ feedId, categoryId, unread, bookmarked, liked, read, sort, limit, offset, smartFloor })
     const hasMore = offset + articles.length < total
-    reply.send({ articles, total, has_more: hasMore, ...(totalWithoutFloor != null ? { total_without_floor: totalWithoutFloor } : {}) })
+
+    // When unread filter yields 0 results, return total article count (without unread filter)
+    // so the UI can distinguish "no articles" from "all read"
+    let totalAll: number | undefined
+    if (unread && total === 0 && offset === 0) {
+      const allResult = getArticles({ feedId, categoryId, limit: 0, offset: 0 })
+      totalAll = allResult.total
+    }
+
+    reply.send({ articles, total, has_more: hasMore, ...(totalWithoutFloor != null ? { total_without_floor: totalWithoutFloor } : {}), ...(totalAll != null ? { total_all: totalAll } : {}) })
   })
 
   api.get('/api/articles/search', async (request, reply) => {
