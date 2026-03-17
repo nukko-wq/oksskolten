@@ -505,6 +505,24 @@ const dict = {
   'settings.passkeyAdded': { ja: 'パスキーを追加しました', en: 'Passkey added' },
   'settings.passkeyDeleted': { ja: 'パスキーを削除しました', en: 'Passkey deleted' },
 
+  // Settings — API tokens
+  'settings.apiTokens': { ja: 'APIトークン', en: 'API Tokens' },
+  'settings.apiTokensDesc': { ja: '外部スクリプトやツールからAPIにアクセスするためのトークンを管理します', en: 'Manage tokens for accessing the API from external scripts and tools' },
+  'settings.createToken': { ja: 'トークンを作成', en: 'Create token' },
+  'settings.tokenName': { ja: '名前', en: 'Name' },
+  'settings.tokenNamePlaceholder': { ja: '例: 監視スクリプト', en: 'e.g. Monitoring script' },
+  'settings.tokenScopes': { ja: '権限', en: 'Scopes' },
+  'settings.tokenScopeRead': { ja: '読み取り専用', en: 'Read only' },
+  'settings.tokenScopeReadWrite': { ja: '読み書き', en: 'Read & Write' },
+  'settings.tokenGenerate': { ja: '生成', en: 'Generate' },
+  'settings.tokenCreated': { ja: 'トークンを作成しました', en: 'Token created' },
+  'settings.tokenCreatedCopy': { ja: 'トークンが生成されました。今すぐコピーしてください：', en: 'Your token has been generated. Copy it now:' },
+  'settings.tokenOnceWarning': { ja: 'このトークンは二度と表示されません。安全な場所に保管してください。', en: 'This token will not be shown again. Store it in a safe place.' },
+  'settings.tokenDeleted': { ja: 'トークンを削除しました', en: 'Token deleted' },
+  'settings.tokenDelete': { ja: '削除', en: 'Delete' },
+  'settings.tokenLastUsed': { ja: '最終使用:', en: 'Last used:' },
+  'settings.noTokens': { ja: 'APIトークンはまだありません', en: 'No API tokens yet' },
+
   // Settings — email change
   'settings.changeEmail': { ja: 'メールアドレス変更', en: 'Change Email' },
   'settings.currentEmail': { ja: '現在のメールアドレス', en: 'Current email' },

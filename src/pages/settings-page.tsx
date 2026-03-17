@@ -6,6 +6,7 @@ import { useI18n, APP_NAME } from '../lib/i18n'
 import { PasswordSettings } from '../components/settings/password-settings'
 import { PasskeySettings } from '../components/settings/passkey-settings'
 import { GitHubOAuthSettings } from '../components/settings/github-oauth-settings'
+import { ApiTokenSettings } from '../components/settings/api-token-settings'
 import { ImageStorageSettings } from '../components/settings/image-storage-settings'
 import { GeneralTab } from './settings/general-tab'
 const AppearanceTab = lazy(() => import('./settings/appearance-tab').then(m => ({ default: m.AppearanceTab })))
@@ -98,6 +99,8 @@ export function SettingsPage() {
               <PasskeySettings />
               <Separator />
               <GitHubOAuthSettings />
+              <Separator />
+              <ApiTokenSettings />
             </>
           )}
 
