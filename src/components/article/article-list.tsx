@@ -168,10 +168,25 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
       const article = articleMap.get(id)
       if (!article) return
       const next = !article.bookmarked_at
-      void apiPatch(`/api/articles/${article.id}/bookmark`, { bookmarked: next })
+      // Optimistic update: flip bookmarked_at in local SWR cache immediately
+      void mutate(
+        (pages) => pages?.map(page => ({
+          ...page,
+          articles: page.articles.map(a =>
+            String(a.id) === id
+              ? { ...a, bookmarked_at: next ? new Date().toISOString() : null }
+              : a
+          ),
+        })),
+        { revalidate: false },
+      )
+      apiPatch(`/api/articles/${article.id}/bookmark`, { bookmarked: next })
         .then(() => {
-          void mutate()
           void globalMutate((key: string) => typeof key === 'string' && key.startsWith('/api/feeds'))
+        })
+        .catch(() => {
+          // Roll back on failure
+          void mutate()
         })
     },
     onOpenExternal: (id) => {
