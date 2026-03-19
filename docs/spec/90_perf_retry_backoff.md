@@ -2,7 +2,11 @@
 
 > [Back to Overview](./01_overview.md)
 
-## Background
+## Overview
+
+Adds exponential backoff and attempt limits to the article full-text retry pipeline, preventing unbounded CPU usage from permanently unfetchable articles.
+
+## Motivation
 
 The cron job running every 5 minutes retries all articles with `last_error IS NOT NULL` and missing body text, without any limit. This causes CPU usage to spike to 99% even when there are zero new articles.
 
@@ -119,44 +123,6 @@ Phase B retry article processing is modified as follows:
 5. **On failure**: Update `updateArticleContent(id, { last_error: msg, retry_count: article.retry_count + 1 })`
 
 `updateArticleContent()` is a generic function that dynamically updates fields. Adding `retry_count?: number` and `last_retry_at?: string | null` to its data parameter type is sufficient.
-
-### Key Files
-
-| File | Description |
-|------|-------------|
-| `migrations/0005_retry_backoff.sql` | Schema changes — add `retry_count` and `last_retry_at` columns |
-| `server/fetcher/util.ts` | `RETRY_MAX_ATTEMPTS`, `RETRY_BATCH_LIMIT` constants |
-| `server/db/articles.ts` | `getRetryArticles()` query update, `getRetryStats()` addition, `updateArticleContent()` type extension |
-| `server/fetcher.ts` | Phase B retry processing (last_retry_at update, retry_count increment, log output) |
-| `server/db/articles.test.ts` | getRetryArticles / getRetryStats query tests |
-| `server/fetcher.test.ts` | Phase B integration tests |
-| `shared/types.ts` | `retry_count` and `last_retry_at` fields added to `Article` interface |
-| `docs/spec/10_schema.md` | Articles table column documentation |
-
-### Test Plan
-
-DB query tests (`server/db/articles.test.ts`):
-
-- `getRetryArticles()` returns only articles with `retry_count < max_attempts`
-- Articles within backoff period are excluded
-- `LIMIT` is applied
-- Results are sorted by `retry_count ASC, last_retry_at ASC`
-- `full_text IS NULL` condition works correctly (`summary IS NULL` alone does not qualify)
-- Partially fetched articles (`full_text` non-NULL, `last_error` non-NULL) are excluded from retry
-- `getRetryStats()` correctly aggregates eligible / backoff_waiting / exceeded counts
-
-Fetcher integration tests (`server/fetcher.test.ts`):
-
-- `retry_count` is incremented on failure
-- `last_error` is set to NULL on success
-- `last_retry_at` is updated before `processArticle()` is called
-
-### Out of Scope
-
-- Admin UI for retry reset
-- API endpoint for listing retry-eligible articles
-- Translation/summarization retry (these are on-demand processes requiring a separate mechanism)
-- Reprocessing articles with partially fetched `full_text`
 
 ### Expected Impact
 

@@ -310,12 +310,54 @@ test_feature_h2_scope_wrong_position if {
 	])
 }
 
-# Non-feature specs are not affected
-test_non_feature_free_h2 if {
+# Non-feature/perf specs are not affected
+test_non_templated_free_h2 if {
 	count(deny) == 0 with input as doc([
 		h(1, "Oksskolten Spec — API"),
 		h(2, "API Specification"),
 		h(3, "Endpoints"),
 		h(3, "Error Handling"),
+	])
+}
+
+# ---------------------------------------------------------------------------
+# Rule 8: Perf spec H2 structure (same template as feature)
+# ---------------------------------------------------------------------------
+
+perf_doc(children) := {"type": "root", "children": children, "metadata": {"is_perf": true}}
+
+test_perf_h2_all_required_pass if {
+	count(deny) == 0 with input as perf_doc([
+		h(1, "Oksskolten Spec — Retry Backoff"),
+		h(2, "Overview"),
+		h(2, "Motivation"),
+		h(2, "Design"),
+	])
+}
+
+test_perf_h2_missing_motivation if {
+	"Perf spec must have '## Motivation' section" in deny with input as perf_doc([
+		h(1, "Oksskolten Spec — Retry Backoff"),
+		h(2, "Overview"),
+		h(2, "Design"),
+	])
+}
+
+test_perf_h2_disallowed if {
+	"Perf spec H2 must be one of {Overview, Scope, Motivation, Design}, got: '## Background'" in deny with input as perf_doc([
+		h(1, "Oksskolten Spec — Retry Backoff"),
+		h(2, "Overview"),
+		h(2, "Motivation"),
+		h(2, "Design"),
+		h(2, "Background"),
+	])
+}
+
+test_perf_h2_wrong_order if {
+	"Perf spec H2 order must be: Overview → Motivation → (Scope) → Design" in deny with input as perf_doc([
+		h(1, "Oksskolten Spec — Retry Backoff"),
+		h(2, "Design"),
+		h(2, "Overview"),
+		h(2, "Motivation"),
 	])
 }

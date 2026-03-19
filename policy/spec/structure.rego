@@ -119,32 +119,49 @@ deny contains msg if {
 	msg := sprintf("01_overview.md must link to all spec files, missing: '%s'", [f])
 }
 
-# Rule 8: Feature spec H2 structure
-# Feature specs use H2 for top-level sections (no redundant feature-name H2).
+# Rule 8: Templated spec H2 structure (feature + perf specs)
+# Feature (8x) and perf (9x) specs share the same H2 template.
 # Required H2s: Overview, Motivation, Design (in that order)
 # Optional H2: Scope (must appear between Motivation and Design)
 # No other H2s are allowed. H3s under Design are unrestricted.
 
-_feature_allowed_h2s := {"Overview", "Scope", "Motivation", "Design"}
-_feature_required_h2s := ["Overview", "Motivation", "Design"]
+_is_templated_spec if {
+	object.get(input, ["metadata", "is_feature"], false) == true
+}
+
+_is_templated_spec if {
+	object.get(input, ["metadata", "is_perf"], false) == true
+}
+
+_spec_type := "Feature" if {
+	object.get(input, ["metadata", "is_feature"], false) == true
+}
+
+_spec_type := "Perf" if {
+	not object.get(input, ["metadata", "is_feature"], false) == true
+	object.get(input, ["metadata", "is_perf"], false) == true
+}
+
+_allowed_h2s := {"Overview", "Scope", "Motivation", "Design"}
+_required_h2s := ["Overview", "Motivation", "Design"]
 
 # Extract H2 names in order
 _h2_names := [heading_text(h) | some h in input.children; h.type == "heading"; h.depth == 2]
 
 # 8a: Required H2s must be present
 deny contains msg if {
-	object.get(input, ["metadata", "is_feature"], false) == true
-	some required in _feature_required_h2s
+	_is_templated_spec
+	some required in _required_h2s
 	not required in {name | some name in _h2_names}
-	msg := sprintf("Feature spec must have '## %s' section", [required])
+	msg := sprintf("%s spec must have '## %s' section", [_spec_type, required])
 }
 
 # 8b: Only allowed H2 names
 deny contains msg if {
-	object.get(input, ["metadata", "is_feature"], false) == true
+	_is_templated_spec
 	some name in _h2_names
-	not name in _feature_allowed_h2s
-	msg := sprintf("Feature spec H2 must be one of {Overview, Scope, Motivation, Design}, got: '## %s'", [name])
+	not name in _allowed_h2s
+	msg := sprintf("%s spec H2 must be one of {Overview, Scope, Motivation, Design}, got: '## %s'", [_spec_type, name])
 }
 
 # 8c: H2 order must be Overview → Motivation → (Scope) → Design
@@ -152,18 +169,18 @@ deny contains msg if {
 _h2_names_without_scope := [name | some name in _h2_names; name != "Scope"]
 
 deny contains msg if {
-	object.get(input, ["metadata", "is_feature"], false) == true
+	_is_templated_spec
 	# All required H2s are present (skip order check if missing — 8a handles that)
-	every required in _feature_required_h2s {
+	every required in _required_h2s {
 		required in {name | some name in _h2_names}
 	}
-	_h2_names_without_scope != _feature_required_h2s
-	msg := "Feature spec H2 order must be: Overview → Motivation → (Scope) → Design"
+	_h2_names_without_scope != _required_h2s
+	msg := sprintf("%s spec H2 order must be: Overview → Motivation → (Scope) → Design", [_spec_type])
 }
 
 # 8d: Scope must appear between Motivation and Design (index check)
 deny contains msg if {
-	object.get(input, ["metadata", "is_feature"], false) == true
+	_is_templated_spec
 	some i, name in _h2_names
 	name == "Scope"
 	some mi, mname in _h2_names
@@ -171,7 +188,7 @@ deny contains msg if {
 	some di, dname in _h2_names
 	dname == "Design"
 	not _between(i, mi, di)
-	msg := "Feature spec '## Scope' must appear between Motivation and Design"
+	msg := sprintf("%s spec '## Scope' must appear between Motivation and Design", [_spec_type])
 }
 
 _between(i, lo, hi) if {

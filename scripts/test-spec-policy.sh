@@ -17,15 +17,20 @@ for file in "$SPEC_DIR"/*.md; do
   name=$(basename "$file")
 
   is_feature=false
+  is_perf=false
   if [[ "$name" == *_feature_* ]]; then
     is_feature=true
+  fi
+  if [[ "$name" == *_perf_* ]]; then
+    is_perf=true
   fi
 
   metadata=$(jq -Mn \
     --arg filename "$name" \
     --argjson is_feature "$is_feature" \
+    --argjson is_perf "$is_perf" \
     --argjson all_filenames "$all_filenames" \
-    '{metadata: {filename: $filename, is_feature: $is_feature, all_filenames: $all_filenames}}')
+    '{metadata: {filename: $filename, is_feature: $is_feature, is_perf: $is_perf, all_filenames: $all_filenames}}')
 
   (
     "$REMARK" --tree-out < "$file" 2>/dev/null \
