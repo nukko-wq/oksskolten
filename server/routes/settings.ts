@@ -6,7 +6,7 @@ import {
   deleteSetting,
 } from '../db.js'
 import { requireJson, getAuthUser } from '../auth.js'
-import { getModelValues } from '../../shared/models.js'
+import { getAllModelValues, getModelValues } from '../../shared/models.js'
 import { assertSafeUrl } from '../fetcher/ssrf.js'
 import { extractByDotPath } from '../fetcher/article-images.js'
 import { getMonthlyUsage } from '../providers/translate/google-translate.js'
@@ -68,11 +68,11 @@ const PREF_ALLOWED: Record<PrefKey, string[] | null> = {
   'appearance.font_family': null,
   'appearance.list_layout': ['list', 'card', 'magazine', 'compact'],
   'chat.provider': ['anthropic', 'gemini', 'openai', 'claude-code', 'ollama'],
-  'chat.model': null,  // null to allow dynamic Ollama model names
+  'chat.model': getAllModelValues(),
   'summary.provider': ['anthropic', 'gemini', 'openai', 'claude-code', 'ollama'],
-  'summary.model': null,
+  'summary.model': getAllModelValues(),
   'translate.provider': ['anthropic', 'gemini', 'openai', 'claude-code', 'ollama', 'google-translate', 'deepl'],
-  'translate.model': null,
+  'translate.model': getAllModelValues(),
   'translate.target_lang': ['ja', 'en'],
   'ollama.base_url': null,
   'ollama.custom_headers': null,
@@ -177,6 +177,18 @@ export async function settingsRoutes(api: FastifyInstance): Promise<void> {
       }
       const allowed = PREF_ALLOWED[key]
       if (allowed && !allowed.includes(value)) {
+        // Skip static model list check when provider is ollama (dynamic models)
+        const modelKeyPair = PROVIDER_MODEL_PAIRS.find(p => p.modelKey === key)
+        if (modelKeyPair) {
+          const provider = body[modelKeyPair.providerKey] !== undefined
+            ? String(body[modelKeyPair.providerKey])
+            : getSetting(modelKeyPair.providerKey)
+          if (provider === 'ollama') {
+            upsertSetting(key, value)
+            updated = true
+            continue
+          }
+        }
         reply.status(400).send({ error: `Invalid value for ${key}` })
         return
       }
@@ -500,7 +512,7 @@ export async function settingsRoutes(api: FastifyInstance): Promise<void> {
 
   async function ollamaFetch(path: string): Promise<Response> {
     const { getOllamaBaseUrl, getOllamaCustomHeaders } = await import('../providers/llm/ollama.js')
-    const baseUrl = getOllamaBaseUrl()
+    const baseUrl = getOllamaBaseUrl().replace(/\/+$/, '')
     const headers = getOllamaCustomHeaders()
     return fetch(`${baseUrl}${path}`, { headers, signal: AbortSignal.timeout(5_000) })
   }

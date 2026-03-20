@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import useSWR from 'swr'
 import { fetcher, apiPost, apiPatch } from '../../../lib/fetcher'
 import { PROVIDER_LABELS, LLM_API_PROVIDERS, TRANSLATE_SERVICE_PROVIDERS } from '../../../data/aiModels'
@@ -285,16 +285,18 @@ function OllamaCard({ t }: { t: TFunc }) {
 
   // Sync inputs with saved values on first load
   const [initialized, setInitialized] = useState(false)
-  if (prefs && !initialized) {
-    setBaseUrlInput(savedBaseUrl)
-    if (savedHeadersJson) {
+  useEffect(() => {
+    if (!prefs || initialized) return
+    setBaseUrlInput(prefs['ollama.base_url'] || '')
+    const headersRaw = prefs['ollama.custom_headers'] || ''
+    if (headersRaw) {
       try {
-        const parsed = JSON.parse(savedHeadersJson)
+        const parsed = JSON.parse(headersRaw)
         setHeaders(Object.entries(parsed).map(([key, value]) => ({ key, value: String(value) })))
       } catch { /* ignore invalid JSON */ }
     }
     setInitialized(true)
-  }
+  }, [prefs, initialized])
 
   function showMessage(text: string, type: 'success' | 'error') {
     setMessage({ text, type })

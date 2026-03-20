@@ -59,6 +59,8 @@ export function TaskModelSection({ settings, t }: { settings: Settings; t: TFunc
     anthropicKey.data?.configured, geminiKey.data?.configured, openaiKey.data?.configured,
     googleTranslateKey.data?.configured, deeplKey.data?.configured, claudeCodeReady,
   ])
+  // Ollama requires no API key, so the task section is always enabled when Ollama is available as a provider.
+  // This is intentional: users should be able to configure provider/model even before starting the Ollama server.
   const hasAnyLlmKey = LLM_API_PROVIDERS.some(p => configuredKeys[p]) || claudeCodeReady || configuredKeys['ollama']
   const hasAnyTranslateKey = TRANSLATE_SERVICE_PROVIDERS.some(p => configuredKeys[p])
   const hasAnyKey = hasAnyLlmKey || hasAnyTranslateKey
