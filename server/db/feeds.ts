@@ -18,7 +18,7 @@ export function getFeeds(): FeedWithCounts[] {
         SUM(CASE WHEN seen_at IS NULL THEN 1 ELSE 0 END) AS unread_count,
         COUNT(CASE WHEN COALESCE(published_at, fetched_at) >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-28 days') THEN 1 END) / 4.0 AS articles_per_week,
         MAX(COALESCE(published_at, fetched_at)) AS latest_published_at
-      FROM articles GROUP BY feed_id
+      FROM articles WHERE purged_at IS NULL GROUP BY feed_id
     ) ac ON f.id = ac.feed_id
     ORDER BY f.name COLLATE NOCASE
   `).all() as FeedWithCounts[]
@@ -28,7 +28,7 @@ export function getFeedMetrics(feedId: number): { avg_content_length: number | n
   return getDb().prepare(`
     SELECT AVG(LENGTH(full_text)) AS avg_content_length
     FROM articles
-    WHERE feed_id = ? AND full_text IS NOT NULL
+    WHERE feed_id = ? AND full_text IS NOT NULL AND purged_at IS NULL
   `).get(feedId) as { avg_content_length: number | null } | undefined
 }
 
@@ -150,7 +150,7 @@ export function updateFeed(
              (seen_at IS NULL) AS is_unread,
              (liked_at IS NOT NULL) AS is_liked,
              (bookmarked_at IS NOT NULL) AS is_bookmarked
-      FROM articles WHERE feed_id = ?
+      FROM articles WHERE feed_id = ? AND purged_at IS NULL
     `).all(id) as MeiliArticleDoc[]
     syncArticlesByFeedToSearch(docs)
   }
@@ -177,7 +177,7 @@ export function bulkMoveFeedsToCategory(feedIds: number[], categoryId: number | 
            (seen_at IS NULL) AS is_unread,
            (liked_at IS NOT NULL) AS is_liked,
            (bookmarked_at IS NOT NULL) AS is_bookmarked
-    FROM articles WHERE feed_id IN (${placeholders})
+    FROM articles WHERE feed_id IN (${placeholders}) AND purged_at IS NULL
   `).all(...feedIds) as MeiliArticleDoc[]
   syncArticlesByFeedToSearch(allDocs)
 }

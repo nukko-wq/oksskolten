@@ -4,6 +4,9 @@ import {
   getSetting,
   upsertSetting,
   deleteSetting,
+  getRetentionStats,
+  purgeExpiredArticles,
+  getDb,
 } from '../db.js'
 import { requireJson, getAuthUser } from '../auth.js'
 import { getAllModelValues, getModelValues } from '../../shared/models.js'
@@ -46,6 +49,9 @@ const PREF_KEYS = [
   'translate.model',
   'translate.target_lang',
   'custom_themes',
+  'retention.enabled',
+  'retention.read_days',
+  'retention.unread_days',
 ] as const
 type PrefKey = typeof PREF_KEYS[number]
 
@@ -73,6 +79,9 @@ const PREF_ALLOWED: Record<PrefKey, string[] | null> = {
   'translate.model': getAllModelValues(),
   'translate.target_lang': ['ja', 'en'],
   'custom_themes': null,
+  'retention.enabled': ['on', 'off'],
+  'retention.read_days': null,
+  'retention.unread_days': null,
 }
 
 const PROVIDER_MODEL_PAIRS: Array<{ providerKey: PrefKey; modelKey: PrefKey }> = [
@@ -175,6 +184,14 @@ export async function settingsRoutes(api: FastifyInstance): Promise<void> {
       if (allowed && !allowed.includes(value)) {
         reply.status(400).send({ error: `Invalid value for ${key}` })
         return
+      }
+      // Validate retention days: must be a positive integer
+      if (key === 'retention.read_days' || key === 'retention.unread_days') {
+        const parsed = z.coerce.number().int().min(1).max(9999).safeParse(value)
+        if (!parsed.success) {
+          reply.status(400).send({ error: `${key} must be a positive integer (1-9999)` })
+          return
+        }
       }
       upsertSetting(key, value)
       updated = true
@@ -443,6 +460,37 @@ export async function settingsRoutes(api: FastifyInstance): Promise<void> {
       const message = err instanceof Error ? err.message : 'Unknown error'
       reply.status(502).send({ error: `Healthcheck failed: ${message}` })
     }
+  })
+
+  // --- Retention policy ---
+
+  const RETENTION_READ_DEFAULT = 90
+  const RETENTION_UNREAD_DEFAULT = 180
+
+  function getRetentionDays(): { readDays: number; unreadDays: number } {
+    const readDays = Number(getSetting('retention.read_days')) || RETENTION_READ_DEFAULT
+    const unreadDays = Number(getSetting('retention.unread_days')) || RETENTION_UNREAD_DEFAULT
+    return { readDays, unreadDays }
+  }
+
+  api.get('/api/settings/retention/stats', async (_request, reply) => {
+    const { readDays, unreadDays } = getRetentionDays()
+    const stats = getRetentionStats(readDays, unreadDays)
+    reply.send({ readDays, unreadDays, ...stats })
+  })
+
+  api.post('/api/settings/retention/purge', async (_request, reply) => {
+    const { readDays, unreadDays } = getRetentionDays()
+    const result = purgeExpiredArticles(readDays, unreadDays)
+
+    // Checkpoint WAL after purge
+    try {
+      getDb().exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    } catch {
+      // non-critical
+    }
+
+    reply.send(result)
   })
 
   // --- Provider API key management ---

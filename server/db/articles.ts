@@ -3,6 +3,10 @@ import type { Article, ArticleListItem, ArticleDetail } from './types.js'
 import type { MeiliArticleDoc } from '../search/client.js'
 import { syncArticleToSearch, deleteArticleFromSearch, syncArticleScoreToSearch, syncArticleFiltersToSearch } from '../search/sync.js'
 import { RETRY_MAX_ATTEMPTS, RETRY_BATCH_LIMIT } from '../fetcher/util.js'
+import { deleteArticleImages } from '../fetcher/article-images.js'
+import { logger } from '../logger.js'
+
+const log = logger.child('retention')
 
 function buildMeiliDoc(id: number): MeiliArticleDoc | null {
   const row = getDb().prepare(`
@@ -71,7 +75,7 @@ export function updateScore(id: number): void {
 export function recalculateScores(): { updated: number } {
   const result = getDb().prepare(`
     UPDATE articles SET score = (${scoreExpr('')})
-    WHERE ${SCORED_ARTICLES_WHERE}
+    WHERE purged_at IS NULL AND ${SCORED_ARTICLES_WHERE}
   `).run()
   return { updated: result.changes }
 }
@@ -90,7 +94,7 @@ export function getArticles(opts: {
   offset: number
   smartFloor?: boolean
 }): { articles: ArticleListItem[]; total: number; totalWithoutFloor?: number } {
-  const conditions: string[] = []
+  const conditions: string[] = ['a.purged_at IS NULL']
   const params: Record<string, unknown> = {}
 
   if (opts.feedId) {
@@ -256,9 +260,9 @@ export function markArticlesSeen(ids: number[]): { updated: number } {
 export function markAllSeenByFeed(feedId: number): { updated: number } {
   // Collect affected IDs before update for search sync
   const affectedIds = (getDb().prepare(
-    'SELECT id FROM articles WHERE feed_id = ? AND seen_at IS NULL',
+    'SELECT id FROM articles WHERE feed_id = ? AND seen_at IS NULL AND purged_at IS NULL',
   ).all(feedId) as { id: number }[]).map(r => r.id)
-  const result = getDb().prepare("UPDATE articles SET seen_at = datetime('now') WHERE feed_id = ? AND seen_at IS NULL").run(feedId)
+  const result = getDb().prepare("UPDATE articles SET seen_at = datetime('now') WHERE feed_id = ? AND seen_at IS NULL AND purged_at IS NULL").run(feedId)
   if (affectedIds.length > 0) {
     syncArticleFiltersToSearch(affectedIds.map(id => ({ id, is_unread: false })))
   }
@@ -285,7 +289,7 @@ export function markArticleLiked(
 }
 
 export function getLikeCount(): number {
-  const row = getDb().prepare('SELECT COUNT(*) AS cnt FROM articles WHERE liked_at IS NOT NULL').get() as { cnt: number }
+  const row = getDb().prepare('SELECT COUNT(*) AS cnt FROM articles WHERE liked_at IS NOT NULL AND purged_at IS NULL').get() as { cnt: number }
   return row.cnt
 }
 
@@ -309,7 +313,7 @@ export function markArticleBookmarked(
 }
 
 export function getBookmarkCount(): number {
-  const row = getDb().prepare('SELECT COUNT(*) AS cnt FROM articles WHERE bookmarked_at IS NOT NULL').get() as { cnt: number }
+  const row = getDb().prepare('SELECT COUNT(*) AS cnt FROM articles WHERE bookmarked_at IS NOT NULL AND purged_at IS NULL').get() as { cnt: number }
   return row.cnt
 }
 
@@ -464,7 +468,7 @@ export function getArticlesByIds(
   const placeholders = ids.map(() => '?').join(',')
   const orderCase = ids.map((id, i) => `WHEN ${id} THEN ${i}`).join(' ')
 
-  const conditions: string[] = [`a.id IN (${placeholders})`]
+  const conditions: string[] = [`a.id IN (${placeholders})`, 'a.purged_at IS NULL']
   if (opts?.unread !== undefined) {
     conditions.push(opts.unread ? 'a.seen_at IS NULL' : 'a.seen_at IS NOT NULL')
   }
@@ -580,7 +584,7 @@ export function getReadingStats(opts?: {
   since?: string
   until?: string
 }): { total: number; read: number; unread: number; by_feed: { feed_id: number; feed_name: string; total: number; read: number; unread: number }[] } {
-  const conditions: string[] = []
+  const conditions: string[] = ['a.purged_at IS NULL']
   const params: Record<string, unknown> = {}
 
   if (opts?.since) {
@@ -618,4 +622,98 @@ export function getReadingStats(opts?: {
   `, params)
 
   return { ...totals, by_feed: byFeed }
+}
+
+// --- Retention policy ---
+
+export function getRetentionStats(readDays: number, unreadDays: number): { readEligible: number; unreadEligible: number } {
+  const readRow = getDb().prepare(`
+    SELECT COUNT(*) AS cnt FROM articles
+    WHERE purged_at IS NULL
+      AND seen_at IS NOT NULL
+      AND seen_at < datetime('now', '-' || ? || ' days')
+      AND bookmarked_at IS NULL
+      AND liked_at IS NULL
+  `).get(readDays) as { cnt: number }
+
+  const unreadRow = getDb().prepare(`
+    SELECT COUNT(*) AS cnt FROM articles
+    WHERE purged_at IS NULL
+      AND seen_at IS NULL
+      AND fetched_at < datetime('now', '-' || ? || ' days')
+      AND bookmarked_at IS NULL
+      AND liked_at IS NULL
+  `).get(unreadDays) as { cnt: number }
+
+  return { readEligible: readRow.cnt, unreadEligible: unreadRow.cnt }
+}
+
+export function purgeExpiredArticles(readDays: number, unreadDays: number): { purged: number } {
+  const db = getDb()
+
+  // Collect IDs to purge — use seen_at for read status (consistent with UI unread indicator)
+  const readIds = db.prepare(`
+    SELECT id FROM articles
+    WHERE purged_at IS NULL
+      AND seen_at IS NOT NULL
+      AND seen_at < datetime('now', '-' || ? || ' days')
+      AND bookmarked_at IS NULL
+      AND liked_at IS NULL
+  `).all(readDays) as { id: number }[]
+
+  const unreadIds = db.prepare(`
+    SELECT id FROM articles
+    WHERE purged_at IS NULL
+      AND seen_at IS NULL
+      AND fetched_at < datetime('now', '-' || ? || ' days')
+      AND bookmarked_at IS NULL
+      AND liked_at IS NULL
+  `).all(unreadDays) as { id: number }[]
+
+  const allIds = [...readIds, ...unreadIds].map(r => r.id)
+  if (allIds.length === 0) return { purged: 0 }
+
+  // Process in batches to avoid overly large SQL
+  const BATCH = 500
+  let purged = 0
+
+  for (let i = 0; i < allIds.length; i += BATCH) {
+    const batch = allIds.slice(i, i + BATCH)
+    const placeholders = batch.map(() => '?').join(',')
+
+    // Clean up archived images before nullifying content
+    const articlesWithImages = db.prepare(
+      `SELECT id FROM articles WHERE id IN (${placeholders}) AND images_archived_at IS NOT NULL`,
+    ).all(...batch) as { id: number }[]
+
+    for (const { id } of articlesWithImages) {
+      try {
+        deleteArticleImages(id)
+      } catch (err) {
+        log.warn(`Failed to delete images for article ${id}:`, err)
+      }
+    }
+
+    // Soft delete: null out content columns and set purged_at
+    const result = db.prepare(`
+      UPDATE articles
+      SET full_text = NULL,
+          full_text_translated = NULL,
+          excerpt = NULL,
+          summary = NULL,
+          og_image = NULL,
+          images_archived_at = NULL,
+          purged_at = datetime('now')
+      WHERE id IN (${placeholders})
+    `).run(...batch)
+
+    purged += result.changes
+
+    // Remove from search index
+    for (const id of batch) {
+      deleteArticleFromSearch(id)
+    }
+  }
+
+  return { purged }
 }

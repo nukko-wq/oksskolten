@@ -311,7 +311,7 @@ const getUserPreferencesTool: ToolDef = {
              ROUND(COUNT(CASE WHEN a.read_at IS NOT NULL THEN 1 END) * 1.0 / COUNT(*), 2) AS read_rate
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
-      WHERE f.type != 'clip'
+      WHERE f.type != 'clip' AND a.purged_at IS NULL
       GROUP BY f.id
       HAVING read_count > 0 OR like_count > 0 OR bookmark_count > 0
       ORDER BY (like_count * 10 + bookmark_count * 5 + read_count * 2) DESC
@@ -326,7 +326,7 @@ const getUserPreferencesTool: ToolDef = {
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
       JOIN categories c ON f.category_id = c.id
-      WHERE f.type != 'clip' AND (a.read_at IS NOT NULL OR a.liked_at IS NOT NULL)
+      WHERE f.type != 'clip' AND a.purged_at IS NULL AND (a.read_at IS NOT NULL OR a.liked_at IS NOT NULL)
       GROUP BY c.id
       ORDER BY (like_count * 5 + read_count) DESC
       LIMIT 5
@@ -337,7 +337,7 @@ const getUserPreferencesTool: ToolDef = {
       SELECT a.title, f.name AS feed_name, a.published_at, a.summary
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
-      WHERE a.liked_at IS NOT NULL
+      WHERE a.liked_at IS NOT NULL AND a.purged_at IS NULL
       ORDER BY a.liked_at DESC
       LIMIT 20
     `).all() as { title: string; feed_name: string; published_at: string; summary: string | null }[]
@@ -347,7 +347,7 @@ const getUserPreferencesTool: ToolDef = {
       SELECT a.title, f.name AS feed_name, a.published_at
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
-      WHERE a.bookmarked_at IS NOT NULL
+      WHERE a.bookmarked_at IS NOT NULL AND a.purged_at IS NULL
       ORDER BY a.bookmarked_at DESC
       LIMIT 10
     `).all()
@@ -361,7 +361,7 @@ const getUserPreferencesTool: ToolDef = {
       FROM articles a
       JOIN feeds f ON a.feed_id = f.id
       JOIN categories c ON f.category_id = c.id
-      WHERE f.type != 'clip'
+      WHERE f.type != 'clip' AND a.purged_at IS NULL
         AND a.published_at > datetime('now', '-30 days')
       GROUP BY c.id
       ORDER BY read_rate DESC
@@ -374,6 +374,7 @@ const getUserPreferencesTool: ToolDef = {
       JOIN feeds f ON a.feed_id = f.id
       WHERE a.published_at > datetime('now', '-30 days')
         AND a.read_at IS NULL
+        AND a.purged_at IS NULL
         AND f.type != 'clip'
       GROUP BY f.id
       HAVING unread_articles > 10
@@ -423,7 +424,7 @@ const getRecentActivityTool: ToolDef = {
         SELECT a.id, a.title, f.name AS feed_name, a.url, a.published_at,
                a.summary, a.seen_at AS activity_at, 'read' AS activity_type
         FROM articles a JOIN feeds f ON a.feed_id = f.id
-        WHERE a.seen_at IS NOT NULL AND f.type != 'clip'
+        WHERE a.seen_at IS NOT NULL AND a.purged_at IS NULL AND f.type != 'clip'
       `)
     }
     if (type === 'all' || type === 'liked') {
@@ -431,7 +432,7 @@ const getRecentActivityTool: ToolDef = {
         SELECT a.id, a.title, f.name AS feed_name, a.url, a.published_at,
                a.summary, a.liked_at AS activity_at, 'liked' AS activity_type
         FROM articles a JOIN feeds f ON a.feed_id = f.id
-        WHERE a.liked_at IS NOT NULL AND f.type != 'clip'
+        WHERE a.liked_at IS NOT NULL AND a.purged_at IS NULL AND f.type != 'clip'
       `)
     }
     if (type === 'all' || type === 'bookmarked') {
@@ -439,7 +440,7 @@ const getRecentActivityTool: ToolDef = {
         SELECT a.id, a.title, f.name AS feed_name, a.url, a.published_at,
                a.summary, a.bookmarked_at AS activity_at, 'bookmarked' AS activity_type
         FROM articles a JOIN feeds f ON a.feed_id = f.id
-        WHERE a.bookmarked_at IS NOT NULL AND f.type != 'clip'
+        WHERE a.bookmarked_at IS NOT NULL AND a.purged_at IS NULL AND f.type != 'clip'
       `)
     }
 
