@@ -630,6 +630,7 @@ export function getRetentionStats(readDays: number, unreadDays: number): { readE
   const readRow = getDb().prepare(`
     SELECT COUNT(*) AS cnt FROM articles
     WHERE purged_at IS NULL
+      AND feed_id NOT IN (SELECT id FROM feeds WHERE type = 'clip')
       AND seen_at IS NOT NULL
       AND seen_at < datetime('now', '-' || ? || ' days')
       AND bookmarked_at IS NULL
@@ -639,6 +640,7 @@ export function getRetentionStats(readDays: number, unreadDays: number): { readE
   const unreadRow = getDb().prepare(`
     SELECT COUNT(*) AS cnt FROM articles
     WHERE purged_at IS NULL
+      AND feed_id NOT IN (SELECT id FROM feeds WHERE type = 'clip')
       AND seen_at IS NULL
       AND fetched_at < datetime('now', '-' || ? || ' days')
       AND bookmarked_at IS NULL
@@ -655,6 +657,7 @@ export function purgeExpiredArticles(readDays: number, unreadDays: number): { pu
   const readIds = db.prepare(`
     SELECT id FROM articles
     WHERE purged_at IS NULL
+      AND feed_id NOT IN (SELECT id FROM feeds WHERE type = 'clip')
       AND seen_at IS NOT NULL
       AND seen_at < datetime('now', '-' || ? || ' days')
       AND bookmarked_at IS NULL
@@ -664,6 +667,7 @@ export function purgeExpiredArticles(readDays: number, unreadDays: number): { pu
   const unreadIds = db.prepare(`
     SELECT id FROM articles
     WHERE purged_at IS NULL
+      AND feed_id NOT IN (SELECT id FROM feeds WHERE type = 'clip')
       AND seen_at IS NULL
       AND fetched_at < datetime('now', '-' || ? || ' days')
       AND bookmarked_at IS NULL
