@@ -60,7 +60,6 @@
     "node-cron": "^3.0.3",
     "openai": "^6.25.0",
     "piscina": "^5.1.4",
-    "pino": "^9.9.5",
     "react-simple-code-editor": "^0.14.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
