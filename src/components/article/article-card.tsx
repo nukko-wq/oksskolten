@@ -131,7 +131,7 @@ function ListCard({ article, dateMode, indicatorStyle, showUnreadIndicator, show
     <a
       href={href}
       onClick={handleClick}
-      className={`article-card block w-full text-left border-b border-border py-3 px-4 md:px-6 transition-[background-color,transform,box-shadow,border-color] duration-100 hover:bg-hover hover:-translate-y-px hover:shadow-sm select-none no-underline text-inherit ${
+      className={`article-card block w-full text-left border-b border-border py-3 px-4 md:px-6 transition-[background-color,transform,box-shadow,border-color] duration-100 hover:bg-hover hover:shadow-sm select-none no-underline text-inherit ${
         indicatorStyle === 'line'
           ? `border-l-2 transition-[border-color] duration-500 ${showIndicator ? 'border-l-accent' : 'border-l-transparent'}`
           : ''
