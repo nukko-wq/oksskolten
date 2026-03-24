@@ -445,7 +445,7 @@ export const ArticleList = forwardRef<ArticleListHandle, object>(function Articl
         )
       )}
 
-      <div className={isGridLayout ? 'grid grid-cols-1 md:grid-cols-2 gap-4 px-4 md:px-6' : ''}>
+      <div className={isGridLayout ? 'grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-4 px-4 md:px-6' : ''}>
         {articles.map((article, index) => {
           const isAutoRead = autoReadIds.has(article.id)
           const effectiveArticle = isAutoRead
