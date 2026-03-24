@@ -236,6 +236,17 @@ describe('Articles', () => {
     expect(getArticleByUrl('https://nonexistent.com')).toBeUndefined()
   })
 
+  it('getArticleByUrl matches percent-encoded URL with raw Unicode lookup', () => {
+    const feed = seedFeed()
+    seedArticle(feed.id, { url: 'https://example.com/%E8%A8%98%E4%BA%8B' })
+
+    // Raw Unicode lookup should find the percent-encoded stored URL
+    const article = getArticleByUrl('https://example.com/記事')
+    expect(article).toBeDefined()
+    expect(article!.url).toBe('https://example.com/%E8%A8%98%E4%BA%8B')
+  })
+
+
   describe('getArticles filtering', () => {
     it('filters by feedId', () => {
       const feed1 = seedFeed({ url: 'https://a.com' })
@@ -529,6 +540,14 @@ describe('Articles', () => {
     ])
     expect(existing.has('https://example.com/a')).toBe(true)
     expect(existing.has('https://example.com/c')).toBe(false)
+  })
+
+  it('getExistingArticleUrls matches percent-encoded URLs with raw Unicode lookup', () => {
+    const feed = seedFeed()
+    seedArticle(feed.id, { url: 'https://example.com/%E8%A8%98%E4%BA%8B' })
+
+    const existing = getExistingArticleUrls(['https://example.com/記事'])
+    expect(existing.has('https://example.com/%E8%A8%98%E4%BA%8B')).toBe(true)
   })
 
   it('getExistingArticleUrls with empty array', () => {

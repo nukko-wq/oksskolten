@@ -8,6 +8,11 @@ import { logger } from '../logger.js'
 
 const log = logger.child('retention')
 
+/** Normalize a URL so that raw-Unicode and percent-encoded forms compare equal. */
+function normalizeUrl(raw: string): string {
+  try { return new URL(raw).href } catch { return raw }
+}
+
 function buildMeiliDoc(id: number): MeiliArticleDoc | null {
   const row = getDb().prepare(`
     SELECT id, feed_id, category_id, title,
@@ -210,7 +215,7 @@ export function getArticleByUrl(url: string): ArticleDetail | undefined {
     FROM active_articles a
     JOIN feeds f ON a.feed_id = f.id
     WHERE a.url = ?
-  `).get(url) as ArticleDetail | undefined
+  `).get(normalizeUrl(url)) as ArticleDetail | undefined
 }
 
 export function getArticleById(id: number): ArticleDetail | undefined {
@@ -401,10 +406,11 @@ export function updateArticleContent(
 
 export function getExistingArticleUrls(urls: string[]): Set<string> {
   if (urls.length === 0) return new Set()
-  const placeholders = urls.map(() => '?').join(',')
+  const normalized = urls.map(normalizeUrl)
+  const placeholders = normalized.map(() => '?').join(',')
   const rows = getDb().prepare(
     `SELECT url FROM articles WHERE url IN (${placeholders})`,
-  ).all(...urls) as { url: string }[]
+  ).all(...normalized) as { url: string }[]
   return new Set(rows.map(r => r.url))
 }
 

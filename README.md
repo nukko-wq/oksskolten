@@ -187,6 +187,22 @@ See [`.env.example`](.env.example) for available environment variables. AI provi
 
 Runs anywhere Docker runs — a home NAS, a Raspberry Pi, or a cloud VM.
 
+### Using pre-built images
+
+Pre-built multi-architecture Docker images (amd64/arm64) are published to GHCR on every release:
+
+```bash
+docker pull ghcr.io/babarot/oksskolten:latest
+```
+
+To use the pre-built image instead of building locally, edit `compose.prod.yaml` and swap the `build` directive for the commented-out `image` line, then:
+
+```bash
+docker compose -f compose.yaml -f compose.prod.yaml up -d
+```
+
+### Building locally
+
 ```bash
 # Production with Cloudflare Tunnel
 docker compose -f compose.yaml -f compose.prod.yaml up --build -d
