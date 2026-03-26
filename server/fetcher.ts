@@ -16,7 +16,7 @@ import {
 import { Semaphore, CONCURRENCY, errorMessage } from './fetcher/util.js'
 import { detectAndStoreSimilarArticles } from './similarity.js'
 import { type FetchProgressEvent, emitProgress, markFeedDone } from './fetcher/progress.js'
-import { fetchFullText, isBotBlockPage } from './fetcher/content.js'
+import { fetchFullText, isBotBlockPage, convertHtmlToMarkdown, markdownToExcerpt, MIN_EXTRACTED_LENGTH } from './fetcher/content.js'
 import { type FetchRssResult, fetchAndParseRss, RateLimitError } from './fetcher/rss.js'
 import { computeInterval, computeEmpiricalInterval, sqliteFuture, DEFAULT_INTERVAL } from './fetcher/schedule.js'
 import { detectLanguage } from './fetcher/ai.js'
@@ -72,8 +72,8 @@ export async function fetchArticleContent(
     fullText = existing.full_text
     ogImage = existing.og_image
   } else if (isAnchorLink && options?.listingExcerpt) {
-    fullText = options.listingExcerpt
-    excerpt = options.listingExcerpt
+    fullText = convertHtmlToMarkdown(options.listingExcerpt)
+    excerpt = markdownToExcerpt(fullText)
   } else {
     try {
       const result = await fetchFullText(url, { requiresJsChallenge: options?.requiresJsChallenge })
@@ -86,13 +86,23 @@ export async function fetchArticleContent(
     }
   }
 
-  // Fallback: use RSS inline content when page fetch failed or returned bot-block page
+  // Fallback: use RSS inline content when page fetch failed, returned bot-block page,
+  // or extracted text is too short (e.g. SPA sites where content is in display:none for SEO).
+  // This is the last resort after fetchFullText and its internal FlareSolverr retry
+  // (which also uses MIN_EXTRACTED_LENGTH) have both failed to produce enough content.
   if (options?.listingExcerpt) {
-    const shouldFallback = !fullText || isBotBlockPage(fullText)
+    const extractedLen = fullText?.replace(/\s+/g, ' ').trim().length ?? 0
+    const shouldFallback = !fullText || isBotBlockPage(fullText) || extractedLen < MIN_EXTRACTED_LENGTH
     if (shouldFallback) {
-      fullText = options.listingExcerpt
-      excerpt = options.listingExcerpt
-      lastError = null
+      const md = convertHtmlToMarkdown(options.listingExcerpt)
+      const mdLen = md.replace(/\s+/g, ' ').trim().length
+      // Only use RSS content if it's more substantial than what we extracted
+      if (mdLen > extractedLen) {
+        log.info({ url, extractedLen, rssLen: mdLen }, 'using RSS feed content as fallback')
+        fullText = md
+        excerpt = markdownToExcerpt(md)
+        lastError = null
+      }
     }
   }
 

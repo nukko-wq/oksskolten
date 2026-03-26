@@ -18,6 +18,12 @@ const pool = new Piscina({
 const WORKER_TIMEOUT_MS = 45_000
 
 /**
+ * Minimum character count for extracted article text to be considered valid.
+ * Shared between fetchFullText (FlareSolverr retry) and fetchArticleContent (RSS fallback).
+ */
+export const MIN_EXTRACTED_LENGTH = 200
+
+/**
  * Strip heavy non-content tags before passing HTML to the worker thread.
  * This runs on the main thread with simple regex (no DOM parsing), so it's fast.
  * Removes clearly non-content shells before Readability to reduce parse time.
@@ -132,7 +138,7 @@ export async function fetchFullText(articleUrl: string, options?: FetchFullTextO
 
   // Step 3: FlareSolverr fallback if extracted text is too short or looks like garbage
   const extractedLen = result.fullText.replace(/\s+/g, ' ').trim().length
-  const needsRetry = extractedLen < 200 || isGarbageExtraction(result.fullText)
+  const needsRetry = extractedLen < MIN_EXTRACTED_LENGTH || isGarbageExtraction(result.fullText)
   if (needsRetry && !requiresJsChallenge) {
     const flare = await fetchViaFlareSolverr(articleUrl, {
       waitForSelector: 'article, main, [role="main"], .post-content, .entry-content',
@@ -201,3 +207,8 @@ export function isBotBlockPage(text: string): boolean {
   ]
   return patterns.some(p => lower.includes(p))
 }
+
+// Re-export markdown utilities so existing import sites don't break.
+// These live in a separate file to avoid circular dependency: contentWorker.ts
+// imports from here, but content.ts creates the Piscina pool that loads contentWorker.ts.
+export { convertHtmlToMarkdown, markdownToExcerpt } from './markdown-utils.js'

@@ -5,6 +5,7 @@ import pino from 'pino'
 import { preClean, postClean } from '../lib/cleaner/index.js'
 import { findBestContentBlock } from '../lib/cleaner/content-scorer.js'
 import type { CleanerConfig } from '../lib/cleaner/selectors.js'
+import { markdownToExcerpt } from './markdown-utils.js'
 
 const isDev = process.env.NODE_ENV === 'development'
 const logger = pino({
@@ -142,12 +143,7 @@ export function parseHtml(input: ParseHtmlInput): ParseHtmlResult {
     /\[([^\]]*(?:\n[^\]]*)+)\]\(([^)]+)\)/g,
     (_m, text, url) => `[${text.replace(/\s*\n\s*/g, ' ').trim()}](${url})`,
   )
-  const excerptText = fullText
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')        // strip ![alt](url)
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')     // [text](url) → text
-    .replace(/\s+/g, ' ')
-    .trim()
-  const excerpt = excerptText.slice(0, 200).trim() || null
+  const excerpt = markdownToExcerpt(fullText)
 
   const title = article?.title || ogTitle || htmlTitle
   return { fullText, ogImage, excerpt, title }
