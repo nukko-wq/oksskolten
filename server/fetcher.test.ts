@@ -1523,6 +1523,89 @@ describe('fetchSingleFeed — content extraction', () => {
     expect(row.full_text).toContain('genuine article content')
   })
 
+  it('falls back to RSS description when page extraction fails (SPA site)', async () => {
+    const feed = seedFeed()
+    // RSS with <description> containing HTML content (like Scrapbox)
+    const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test</title>
+    <item>
+      <title>SPA Article</title>
+      <link>https://example.com/spa-article</link>
+      <description><![CDATA[<a href="https://example.com/tag">#tag</a><br /><br />This is the article content from RSS description. It has enough text to be meaningful for the reader and should be used as fallback when page extraction fails completely.]]></description>
+    </item>
+  </channel>
+</rss>`
+
+    // SPA page: content is in display:none div, empty otherwise
+    const spaHtml = `<!DOCTYPE html>
+<html>
+<head><title>SPA Article</title></head>
+<body>
+  <div id="app-container"></div>
+  <div class="summary" style="display:none">
+    <p>Hidden content that will be removed by pre-clean.</p>
+  </div>
+</body>
+</html>`
+
+    mockFetch.mockImplementation((url: string | URL) => {
+      const u = url.toString()
+      if (u === feed.rss_url) return Promise.resolve(mockResponse(rssXml, { headers: { 'content-type': 'application/rss+xml' } }))
+      if (u === 'https://example.com/spa-article') return Promise.resolve(mockResponse(spaHtml))
+      return Promise.resolve(mockResponse('', { status: 404 }))
+    })
+
+    await fetchSingleFeed(feed)
+
+    const { getDb } = await import('./db.js')
+    const row = getDb().prepare('SELECT full_text, last_error FROM articles WHERE url = ?').get('https://example.com/spa-article') as { full_text: string | null; last_error: string | null }
+    expect(row.full_text).toBeTruthy()
+    expect(row.full_text).toContain('article content from RSS description')
+    // Should be converted to Markdown (no raw HTML tags)
+    expect(row.full_text).not.toContain('<br')
+    expect(row.full_text).not.toContain('<a ')
+    // Should not have a lingering error since fallback succeeded
+    expect(row.last_error).toBeNull()
+  })
+
+  it('falls back to RSS description when extracted content is too short', async () => {
+    const feed = seedFeed()
+    const rssXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test</title>
+    <item>
+      <title>Short Page</title>
+      <link>https://example.com/short-page</link>
+      <description><![CDATA[This is a much longer description from the RSS feed that contains meaningful article content. It discusses various topics and provides substantial information that the reader would find valuable. The content continues for several sentences to ensure it exceeds the minimum threshold.]]></description>
+    </item>
+  </channel>
+</rss>`
+
+    // Page with very minimal content
+    const shortHtml = `<!DOCTYPE html>
+<html>
+<head><title>Short Page</title></head>
+<body><article><p>Loading...</p></article></body>
+</html>`
+
+    mockFetch.mockImplementation((url: string | URL) => {
+      const u = url.toString()
+      if (u === feed.rss_url) return Promise.resolve(mockResponse(rssXml, { headers: { 'content-type': 'application/rss+xml' } }))
+      if (u === 'https://example.com/short-page') return Promise.resolve(mockResponse(shortHtml))
+      return Promise.resolve(mockResponse('', { status: 404 }))
+    })
+
+    await fetchSingleFeed(feed)
+
+    const { getDb } = await import('./db.js')
+    const row = getDb().prepare('SELECT full_text FROM articles WHERE url = ?').get('https://example.com/short-page') as { full_text: string | null }
+    expect(row.full_text).toBeTruthy()
+    expect(row.full_text).toContain('meaningful article content')
+  })
+
   it('non-Error thrown in processArticle is stringified', async () => {
     const feed = seedFeed()
     const rssXml = rss20Xml('Test', [

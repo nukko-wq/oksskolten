@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseHtml } from './contentWorker.js'
 import { extractAnchoredContentHtml, isBotBlockPage, stripHeavyTags } from './content.js'
+import { convertHtmlToMarkdown, markdownToExcerpt } from './markdown-utils.js'
 
 // ---------------------------------------------------------------------------
 // Mocks — these mock modules used by contentWorker.ts (parseHtml)
@@ -419,5 +420,89 @@ describe('isBotBlockPage', () => {
   it('detects pattern embedded in larger HTML text', () => {
     const html = '<div class="wrapper"><h1>Security Check</h1><p>Please verify you are a human to continue browsing.</p></div>'
     expect(isBotBlockPage(html)).toBe(true)
+  })
+})
+
+describe('convertHtmlToMarkdown', () => {
+  it('converts simple HTML to markdown', () => {
+    const html = '<p>Hello world</p>'
+    const md = convertHtmlToMarkdown(html)
+    expect(md).toContain('Hello world')
+  })
+
+  it('converts links to markdown links', () => {
+    const html = '<a href="https://example.com">Example</a>'
+    const md = convertHtmlToMarkdown(html)
+    expect(md).toContain('[Example](https://example.com)')
+  })
+
+  it('converts br tags to line breaks', () => {
+    const html = 'Line one<br /><br />Line two'
+    const md = convertHtmlToMarkdown(html)
+    expect(md).toContain('Line one')
+    expect(md).toContain('Line two')
+  })
+
+  it('converts mixed HTML with links, line breaks, and nested spans', () => {
+    const html = '<a href="https://example.com/tag">#topic</a><br /><br />First paragraph text.<br /><span><span>&nbsp;</span>Second paragraph with nested spans and details.</span>'
+    const md = convertHtmlToMarkdown(html)
+    expect(md).toContain('#topic')
+    expect(md).toContain('First paragraph text.')
+    expect(md).toContain('Second paragraph')
+    expect(md).not.toContain('<span>')
+    expect(md).not.toContain('<br')
+  })
+
+  it('handles empty HTML', () => {
+    const md = convertHtmlToMarkdown('')
+    expect(md.trim()).toBe('')
+  })
+
+  it('passes through plain text without mangling', () => {
+    const text = 'This is plain text without any HTML tags.\nSecond line here.'
+    const md = convertHtmlToMarkdown(text)
+    expect(md).toBe(text)
+  })
+
+  it('passes through Markdown without escaping syntax', () => {
+    const markdown = '## Heading\n\nSome **bold** text and [a link](https://example.com).'
+    const md = convertHtmlToMarkdown(markdown)
+    expect(md).toBe(markdown)
+    expect(md).not.toContain('\\*')
+    expect(md).not.toContain('\\[')
+    expect(md).not.toContain('\\#')
+  })
+})
+
+describe('markdownToExcerpt', () => {
+  it('strips markdown images', () => {
+    const md = '![alt text](https://example.com/img.jpg) Some text after.'
+    expect(markdownToExcerpt(md)).toBe('Some text after.')
+  })
+
+  it('converts markdown links to plain text', () => {
+    const md = 'Read [this article](https://example.com) for more info.'
+    expect(markdownToExcerpt(md)).toBe('Read this article for more info.')
+  })
+
+  it('truncates to 200 characters by default', () => {
+    const md = 'A'.repeat(300)
+    const excerpt = markdownToExcerpt(md)!
+    expect(excerpt.length).toBe(200)
+  })
+
+  it('accepts custom max length', () => {
+    const md = 'A'.repeat(300)
+    const excerpt = markdownToExcerpt(md, 100)!
+    expect(excerpt.length).toBe(100)
+  })
+
+  it('returns null for empty markdown', () => {
+    expect(markdownToExcerpt('')).toBeNull()
+  })
+
+  it('collapses whitespace', () => {
+    const md = 'Line one.\n\nLine two.  Spaces.'
+    expect(markdownToExcerpt(md)).toBe('Line one. Line two. Spaces.')
   })
 })
